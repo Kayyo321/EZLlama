@@ -42,6 +42,17 @@ Expected chat behavior:
 - A chat title/history mechanism, with **New chat**, clear-chat confirmation, and a way to revisit prior local conversations.
 - Sending is disabled when no server is ready, while the reason and next action are visible.
 
+### Agent tools
+
+The selected model can act inside the open workspace through function calling: read, list, and search files; create, edit, and delete files; run shell commands; and ask the user questions. Each tool call is shown inline in the transcript with its arguments, status, and result, and tool output takes part in context accounting and compaction.
+
+Protected actions are gated by a per-tool **allow / ask / deny** permission. When a tool asks, the composer's **Manual / Auto** approval mode decides who answers:
+
+- **Manual** shows an inline prompt with **Yes**, **Yes, don't ask again**, and **No**.
+- **Auto** sends the same question to a reviewer model, which must answer with one of those three verdicts. The reviewer runs the same model in a fresh context by default or a separately configured model.
+
+"Don't ask again" lasts for the current VS Code session and can be reset. Tools require a trusted workspace, never leave it, and never touch credential files. Settings expose the tool switch, approval mode, reviewer strategy and model, per-tool permissions, command timeout, output cap, and round limit.
+
 ### Composer toolbar
 
 Place the standard coding-chat controls directly above the chat input. Keep them compact and hide less common controls in an overflow menu on narrow widths.
@@ -88,6 +99,8 @@ Include:
 ## Settings view
 
 Settings are grouped in a simple vertical layout. Changes should validate before use, persist in VS Code settings or extension storage as appropriate, and provide inline errors rather than modal interruptions.
+
+The **Save changes** control stays pinned at the top of the view while the sections scroll beneath it. A narrow bar on the right lists the section titles; clicking one jumps to that section, and the title of the section currently in view is highlighted while scrolling. Transient notifications overlay the top of the view rather than reflowing the content below them.
 
 ### Command Config
 

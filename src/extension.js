@@ -38,6 +38,10 @@ class Extension {
       server: this.server,
       log: this.log,
       getKey: () => context.secrets.get('apiKey'),
+      workspace: () => ({
+        root: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+        trusted: vscode.workspace.isTrusted
+      }),
       switchModel: async (id) => {
         if (this.disposed || this.stopRequested) throw new Error('Model switch cancelled.');
         await this.server.stop();
@@ -132,6 +136,8 @@ class Extension {
       busy: this.chat.busy,
       attachments: this.attachments.map(({ id, name, path }) => ({ id, name, path })),
       jobs: [...this.jobs.keys()],
+      approvals: [...this.chat.sessionAllow],
+      workspace: !!vscode.workspace.workspaceFolders?.length && vscode.workspace.isTrusted,
       presets,
       hasApiKey: !!this.secrets.length
     };
@@ -373,6 +379,16 @@ class Extension {
       }
       case 'stopGeneration':
         this.chat.stop();
+        break;
+      case 'toolReply':
+        if (typeof m.id !== 'string') throw new Error('Unknown prompt.');
+        this.chat.reply(m.id, m.value);
+        break;
+      case 'resetApprovals':
+        this.chat.sessionAllow.clear();
+        this.log.add('agent', 'info', 'Session tool approvals were reset.');
+        this.post({ type: 'progress', text: 'Session tool approvals reset.' });
+        this.broadcast();
         break;
       case 'newChat':
         this.chat.newChat();

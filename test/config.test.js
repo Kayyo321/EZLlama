@@ -54,3 +54,16 @@ test('configuration rejects duplicate Otherwise rows, bad ports, invalid JSON ob
   assert.ok(errors.env);
   assert.ok(errors.modelCommands);
 });
+test('tool permissions merge with defaults and agent settings are validated', () => {
+  const { config, errors } = validateConfig({ toolPermissions: { run_command: 'deny' } });
+  assert.deepEqual(errors, {});
+  assert.equal(config.toolPermissions.run_command, 'deny');
+  assert.equal(config.toolPermissions.read_file, 'allow');
+  assert.equal(config.toolPermissions.write_file, 'ask');
+  assert.ok(validateConfig({ toolPermissions: { run_command: 'maybe' } }).errors.toolPermissions);
+  assert.ok(validateConfig({ toolPermissions: { format_disk: 'allow' } }).errors.toolPermissions);
+  assert.ok(validateConfig({ reviewStrategy: 'separate' }).errors.reviewModel);
+  assert.ok(validateConfig({ approvalMode: 'sometimes' }).errors.approvalMode);
+  assert.ok(validateConfig({ maxToolRounds: 0 }).errors.maxToolRounds);
+  assert.equal(validateConfig({}).config.approvalMode, 'manual');
+});

@@ -323,9 +323,11 @@ async function recommend(config, model, binary) {
   for (const [flag, value] of [
     ['--threads', report.threads],
     ['--batch-size', report.freeGB >= 16 ? 512 : 128],
-    ['--gpu-layers', layers]
+    ['--gpu-layers', layers],
+    ['--jinja', '']
   ])
-    if (!binary.capabilities || binary.capabilities.includes(flag)) command += ` ${flag} ${value}`;
+    if (!binary.capabilities || binary.capabilities.includes(flag))
+      command += ` ${flag}${value === '' ? '' : ' ' + value}`;
   return { command, report };
 }
 class Server extends EventEmitter {
@@ -358,6 +360,13 @@ class Server extends EventEmitter {
     try {
       await validateModel(model.path, undefined, signal);
       const command = resolveCommand(config, model, binary.executable, custom);
+      // Tool calling needs the Jinja template engine; add it only when the binary supports it.
+      if (
+        config.agentTools &&
+        binary.capabilities?.includes('--jinja') &&
+        !command.args.includes('--jinja')
+      )
+        command.args.push('--jinja');
       if (binary.apiKey) {
         command.args.push('--api-key', binary.apiKey);
         this.apiKey = binary.apiKey;
@@ -512,11 +521,21 @@ class Server extends EventEmitter {
     this.setState('stopped');
   }
 }
-async function completion(
+const normalizeToolCalls = (calls) =>
+  calls
+    .filter(Boolean)
+    .map((call, index) => ({
+      id: call.id || `call_${index}`,
+      name: call.name || '',
+      arguments:
+        typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments ?? {})
+    }))
+    .filter((call) => call.name);
+async function completionDetailed(
   base,
   config,
   messages,
-  { signal, onToken, apiKey, maxOutput, requestBody = {} } = {}
+  { signal, onToken, apiKey, maxOutput, requestBody = {}, tools } = {}
 ) {
   const abort = AbortSignal.any([
     ...(signal ? [signal] : []),
@@ -531,16 +550,21 @@ async function completion(
     signal: abort,
     body: JSON.stringify({
       ...config.extraBody,
-      ...requestBody,
       messages,
       temperature: config.temperature,
       max_tokens: maxOutput || config.maxOutput,
-      stream: config.streaming
+      stream: config.streaming,
+      ...(tools?.length ? { tools, tool_choice: 'auto' } : {}),
+      ...requestBody
     })
   });
   if (!response.ok) {
     const body = (await response.text()).slice(0, 3000);
-    const error = new Error(`HTTP ${response.status}: ${body}`);
+    const error = new Error(
+      tools?.length && /jinja/i.test(body)
+        ? `The server rejected tool definitions. Start llama-server with --jinja (added automatically when the binary supports it) or disable Agent tools in Settings. ${body}`
+        : `HTTP ${response.status}: ${body}`
+    );
     // llama.cpp and compatible servers do not agree on the HTTP status used for
     // an overflowing prompt, so identify it from the response rather than only
     // treating HTTP 400 as recoverable.
@@ -550,21 +574,27 @@ async function completion(
   }
   if (!config.streaming) {
     const data = await response.json();
-    const result = data.choices?.[0]?.message?.content;
-    if (typeof result !== 'string') throw new Error('Server returned no assistant content.');
-    onToken?.(result);
+    const message = data.choices?.[0]?.message;
+    const toolCalls = normalizeToolCalls(
+      (message?.tool_calls || []).map((t) => ({ id: t.id, ...t.function }))
+    );
+    const result = typeof message?.content === 'string' ? message.content : '';
+    if (!result && !toolCalls.length && typeof message?.content !== 'string')
+      throw new Error('Server returned no assistant content.');
+    if (result) onToken?.(result);
     if (data.choices?.[0]?.finish_reason === 'length') {
       const error = new Error('Generation reached the available token limit.');
       error.outputLimit = true;
       error.partialOutput = result;
       throw error;
     }
-    return result;
+    return { content: result, toolCalls, finishReason: data.choices?.[0]?.finish_reason || '' };
   }
   let result = '',
     buffer = '',
     done = false,
     finishReason = '';
+  const calls = [];
   const decoder = new TextDecoder();
   const consume = (event) => {
     const payload = event
@@ -590,6 +620,17 @@ async function completion(
     const delta = choice?.delta?.content || '';
     result += delta;
     if (delta) onToken?.(delta);
+    // Tool calls stream as fragments keyed by index; arguments arrive as JSON text pieces.
+    for (const fragment of choice?.delta?.tool_calls || []) {
+      const index = Number.isInteger(fragment.index) ? fragment.index : calls.length;
+      const call = (calls[index] ||= { id: '', name: '', arguments: '' });
+      if (fragment.id) call.id = fragment.id;
+      if (fragment.function?.name) call.name = fragment.function.name;
+      if (typeof fragment.function?.arguments === 'string')
+        call.arguments += fragment.function.arguments;
+      else if (fragment.function?.arguments && typeof fragment.function.arguments === 'object')
+        call.arguments = JSON.stringify(fragment.function.arguments);
+    }
   };
   for await (const chunk of response.body) {
     buffer += decoder.decode(chunk, { stream: true });
@@ -613,7 +654,10 @@ async function completion(
     error.partialOutput = result;
     throw error;
   }
-  return result;
+  return { content: result, toolCalls: normalizeToolCalls(calls), finishReason };
+}
+async function completion(base, config, messages, options) {
+  return (await completionDetailed(base, config, messages, options)).content;
 }
 async function countTokens(base, messages, mode, signal, apiKey) {
   const content = messages.map((m) => `${m.role}: ${m.content}`).join('\n');
@@ -645,6 +689,7 @@ module.exports = {
   run,
   Server,
   completion,
+  completionDetailed,
   countTokens,
   delay
 };

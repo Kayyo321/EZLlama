@@ -35,8 +35,7 @@ let state,
   follow = true,
   settingsOpen = false;
 const app = $('#app');
-app.innerHTML = `<nav class="tabs" role="tablist" aria-label="EZLlama views">${['chat', 'console', 'settings'].map((name) => `<button id="tab-${name}" role="tab" aria-controls="panel-${name}" data-tab="${name}" title="${name[0].toUpperCase() + name.slice(1)}" aria-label="${name}">${icon(name)}<span>${name[0].toUpperCase() + name.slice(1)}</span></button>`).join('')}</nav>
-<div id="feedback" role="status" aria-live="polite" hidden></div>
+app.innerHTML = `<div class="top"><nav class="tabs" role="tablist" aria-label="EZLlama views">${['chat', 'console', 'settings'].map((name) => `<button id="tab-${name}" role="tab" aria-controls="panel-${name}" data-tab="${name}" title="${name[0].toUpperCase() + name.slice(1)}" aria-label="${name}">${icon(name)}<span>${name[0].toUpperCase() + name.slice(1)}</span></button>`).join('')}</nav><div id="feedback" role="status" aria-live="polite" hidden></div></div>
 <section id="panel-chat" role="tabpanel" aria-labelledby="tab-chat">
  <header class="chat-header"><button id="server-toggle" data-action="start">Start model</button><select id="model-select" aria-label="Model"></select></header>
  <div id="server-status" class="muted" role="status"></div>
@@ -44,15 +43,15 @@ app.innerHTML = `<nav class="tabs" role="tablist" aria-label="EZLlama views">${[
  <div id="transcript" tabindex="0" aria-label="Conversation"></div>
  <div id="composer"><div id="attachments"></div><div class="toolbar">
  ${button('newChat', 'New chat', 'plus')}${button('attach', 'Attach workspace files', 'clip')}${button('selection', 'Include editor selection', 'selection')}
- <span class="mode" title="Chat with workspace context; changes are proposed as code or diffs">Chat</span>
+ <button type="button" id="approval-mode" class="mode" data-action="toggleApproval" title="Tool approval mode">Manual</button>
  <span id="context-meter" class="context-meter" role="status" title="Context remaining" aria-label="Context remaining">${icon('context')}<span></span></span>
  <span class="compact-group">${button('compact', 'Compact chat', 'compact')}<label class="auto" title="Automatically summarize at the context limit"><input id="auto-compact" type="checkbox">Auto</label></span>
- <details class="overflow"><summary title="More chat controls" aria-label="More chat controls">${icon('more')}</summary><div class="popover"><button data-action="clearChat">Clear chat…</button><button data-action="exportChat">Export chat</button><button data-action="summary">Inspect summary</button><label>Temperature<input id="temperature" type="number" min="0" max="2" step="0.1"></label><label>Max output<input id="max-output" type="number" min="16" max="131072"></label><button data-action="saveGeneration">Save generation settings</button></div></details>
+ <details class="overflow"><summary title="More chat controls" aria-label="More chat controls">${icon('more')}</summary><div class="popover"><button data-action="clearChat">Clear chat…</button><button data-action="exportChat">Export chat</button><button data-action="summary">Inspect summary</button><button data-action="resetApprovals">Reset tool approvals</button><label>Temperature<input id="temperature" type="number" min="0" max="2" step="0.1"></label><label>Max output<input id="max-output" type="number" min="16" max="131072"></label><button data-action="saveGeneration">Save generation settings</button></div></details>
  ${button('stopGeneration', 'Stop generation', 'stop', 'id="stop-generation"')}
  </div><div class="input-box"><textarea id="prompt" rows="3" placeholder="Ask about your code…" aria-label="Message"></textarea>${button('send', 'Send message (Enter)', 'send', 'id="send-message"')}</div><div id="send-reason" class="muted"></div></div>
 </section>
-<section id="panel-console" role="tabpanel" aria-labelledby="tab-console" hidden><div class="console-controls"><input id="log-search" placeholder="Search logs" aria-label="Search logs"><select id="log-level" aria-label="Log level"><option value="">All levels</option>${['debug', 'info', 'warning', 'error'].map((x) => `<option>${x}</option>`).join('')}</select><select id="log-source" aria-label="Log source"><option value="">All sources</option>${['extension', 'server', 'request', 'download', 'compaction'].map((x) => `<option>${x}</option>`).join('')}</select></div><div class="actions"><button data-action="copyLogs">Copy</button><button data-action="clearLogs">Clear visible</button><button data-action="exportLogs">Export</button><label><input id="follow" type="checkbox" checked>Follow</label></div><pre id="logs" tabindex="0" aria-label="Server and extension logs"></pre></section>
-<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden><div class="settings-heading"><h2>Settings</h2><button class="primary" data-action="save">Save changes</button></div><div id="unsaved" class="muted"></div><div id="settings-content"></div></section>`;
+<section id="panel-console" role="tabpanel" aria-labelledby="tab-console" hidden><div class="console-controls"><input id="log-search" placeholder="Search logs" aria-label="Search logs"><select id="log-level" aria-label="Log level"><option value="">All levels</option>${['debug', 'info', 'warning', 'error'].map((x) => `<option>${x}</option>`).join('')}</select><select id="log-source" aria-label="Log source"><option value="">All sources</option>${['extension', 'server', 'request', 'download', 'compaction', 'agent'].map((x) => `<option>${x}</option>`).join('')}</select></div><div class="actions"><button data-action="copyLogs">Copy</button><button data-action="clearLogs">Clear visible</button><button data-action="exportLogs">Export</button><label><input id="follow" type="checkbox" checked>Follow</label></div><pre id="logs" tabindex="0" aria-label="Server and extension logs"></pre></section>
+<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden><div class="settings-heading"><h2>Settings</h2><span id="unsaved" class="muted"></span><button data-action="discard">Discard</button><button class="primary" data-action="save">Save changes</button></div><div class="settings-body"><div id="settings-scroll"><div id="settings-content"></div></div><nav id="settings-nav" aria-label="Settings sections"></nav></div></section>`;
 function changeTab(value) {
   tab = value;
   for (const name of ['chat', 'console', 'settings']) {
@@ -94,15 +93,64 @@ function markdown(content) {
     });
   return container;
 }
+function prettyArguments(raw) {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw || '';
+  }
+}
+let lastPromptId = '';
+function toolRow(message) {
+  const article = document.createElement('article');
+  article.className = `message tool tool-${message.status || 'done'}`;
+  article.dataset.messageId = message.id;
+  const prompt = message.status === 'awaiting' ? message.prompt : null;
+  const status =
+    {
+      pending: 'Pending',
+      awaiting: prompt?.kind === 'question' ? 'Waiting for your answer' : 'Needs approval',
+      reviewing: 'Reviewer deciding…',
+      running: 'Running…',
+      done: 'Done',
+      denied: 'Not run',
+      failed: 'Failed',
+      cancelled: 'Cancelled'
+    }[message.status] || message.status;
+  let html = `<div class="tool-head"><span class="tool-name">${esc(message.summary || message.name)}</span><span class="tool-status">${esc(status)}</span></div>`;
+  if (prompt?.kind === 'approval')
+    html += `<div class="tool-prompt" role="group" aria-label="Approval"><p>Allow the model to ${esc(message.summary)}?</p><div class="actions"><button class="primary" data-action="reply" data-id="${esc(prompt.id)}" data-value="yes">Yes</button><button data-action="reply" data-id="${esc(prompt.id)}" data-value="always">Yes, don’t ask again</button><button data-action="reply" data-id="${esc(prompt.id)}" data-value="no">No</button></div></div>`;
+  else if (prompt?.kind === 'question')
+    html += `<div class="tool-prompt" role="group" aria-label="Question from the model"><p>${esc(prompt.question)}</p><div class="actions">${(prompt.options || []).map((o) => `<button data-action="reply" data-id="${esc(prompt.id)}" data-value="${esc(o)}">${esc(o)}</button>`).join('')}</div><div class="reply-row"><input id="reply-input" data-prompt="${esc(prompt.id)}" placeholder="Type an answer…" aria-label="Your answer"><button class="primary" data-action="replyText" data-id="${esc(prompt.id)}">Reply</button></div></div>`;
+  if (message.review) html += `<div class="muted tool-review">Reviewer: ${esc(message.review)}</div>`;
+  const detail = [
+    message.arguments ? `Arguments:\n${prettyArguments(message.arguments).slice(0, 4000)}` : '',
+    message.content && !prompt ? `Result:\n${message.content.slice(0, 20000)}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+  if (detail)
+    html += `<details><summary>Details</summary><pre class="tool-output">${esc(detail)}</pre></details>`;
+  article.innerHTML = html;
+  return article;
+}
 function renderTranscript() {
   const root = $('#transcript');
   const atBottom = root.scrollTop + root.clientHeight >= root.scrollHeight - 90;
+  const previousReply = $('#reply-input');
+  const replyDraft = previousReply ? { id: previousReply.dataset.prompt, value: previousReply.value } : null;
   root.replaceChildren();
   if (!state.active?.messages.length) {
     root.innerHTML = `<div class="empty"><div class="eyebrow">LOCAL FIRST</div><h1>A quiet place<br>to work with your code.</h1><p>Add a model in Settings, start its server,<br>and begin a conversation.</p><button data-action="settings">Configure a model</button></div>`;
     return;
   }
   for (const message of state.active.messages) {
+    if (message.role === 'tool') {
+      root.append(toolRow(message));
+      continue;
+    }
+    // A tool-only assistant turn is represented by its tool rows.
+    if (message.role === 'assistant' && !message.content && message.toolCalls?.length) continue;
     const article = document.createElement('article');
     article.className = `message ${message.role} ${message.kind || ''}`;
     article.dataset.messageId = message.id;
@@ -142,6 +190,14 @@ function renderTranscript() {
       article.append(files);
     }
     root.append(article);
+  }
+  const reply = $('#reply-input');
+  if (reply) {
+    if (replyDraft?.id === reply.dataset.prompt) reply.value = replyDraft.value;
+    if (reply.dataset.prompt !== lastPromptId) {
+      lastPromptId = reply.dataset.prompt;
+      reply.focus();
+    }
   }
   if (atBottom) root.scrollTop = root.scrollHeight;
 }
@@ -190,6 +246,25 @@ function renderChat() {
           ? 'Choose an available model, or validate models in Settings.'
           : 'Start the model to send a message.';
   $('#auto-compact').checked = state.config.autoCompact;
+  const mode = $('#approval-mode');
+  const toolsOn = state.config.agentTools && state.workspace !== false;
+  mode.textContent = !state.config.agentTools
+    ? 'Tools off'
+    : state.workspace === false
+      ? 'No workspace'
+      : state.config.approvalMode === 'auto'
+        ? 'Auto'
+        : 'Manual';
+  mode.classList.toggle('auto', toolsOn && state.config.approvalMode === 'auto');
+  mode.disabled = !toolsOn || state.busy;
+  mode.title = !state.config.agentTools
+    ? 'Agent tools are disabled in Settings.'
+    : state.workspace === false
+      ? 'Open a trusted workspace folder to use tools.'
+      : state.config.approvalMode === 'auto'
+        ? 'Auto: a reviewer model approves protected actions. Click for Manual.'
+        : 'Manual: you approve protected actions. Click for Auto.';
+  mode.setAttribute('aria-label', `Tool approval mode: ${mode.textContent}`);
   $('#temperature').value = state.config.temperature;
   $('#max-output').value = state.config.maxOutput;
   $('#attachments').innerHTML = state.attachments
@@ -212,9 +287,14 @@ function contextEstimate() {
   const messages = [state.config.systemPrompt, chat?.summary || ''].concat(
     (chat?.messages || [])
       .slice(chat?.contextStart || 0)
-      .filter((m) => ['user', 'assistant'].includes(m.role))
-      .map((m) => m.contextContent || m.content || '')
+      .filter((m) => ['user', 'assistant', 'tool'].includes(m.role))
+      .map(
+        (m) =>
+          (m.contextContent || m.content || '') +
+          (m.toolCalls || []).map((t) => t.name + (t.arguments || '')).join('')
+      )
   );
+  if (state.config.agentTools && state.workspace !== false) messages.push('x'.repeat(3500));
   // This stays available while the server is stopped. It is deliberately conservative for code-heavy chats.
   const used = Math.ceil(messages.join('\n\n').length / 3.5);
   return { limit: inputLimit, used, remaining: Math.max(0, inputLimit - used) };
@@ -255,10 +335,20 @@ function field(key, label, type = 'text', help = '') {
 function commandEditor(row, command, modelId) {
   return `<div class="command-editor" data-row="${esc(row)}"><textarea aria-label="Server command" rows="3" data-command="${esc(row)}">${esc(command)}</textarea><small>Placeholders: {executable}, {model}, {host}, {port}, {context}. Managed model, host, port, context and one slot are enforced.</small><div class="actions"><button data-action="preview" data-row="${esc(row)}" data-id="${esc(modelId || '')}">Preview</button><button data-action="recommend" data-row="${esc(row)}" data-id="${esc(modelId || '')}">Generate optimal command</button><button data-action="testCommand" data-row="${esc(row)}" data-id="${esc(modelId || '')}">Test / start</button>${row !== 'one' ? `<button data-action="removeCommand" data-id="${esc(row)}">Remove</button>` : ''}</div><small class="error-text" data-error="${row === 'one' ? 'command' : 'command.' + row}"></small><pre class="command-result" data-result="${esc(row)}" hidden></pre></div>`;
 }
+const TOOL_LABELS = [
+  ['read_file', 'Read files'],
+  ['list_files', 'List files'],
+  ['search_files', 'Search files'],
+  ['write_file', 'Create or overwrite files'],
+  ['edit_file', 'Edit files'],
+  ['delete_file', 'Delete files'],
+  ['run_command', 'Run commands'],
+  ['ask_user', 'Ask you questions']
+];
 function renderSettings() {
   const modelOptions = [['', 'Choose model'], ...draft.models.map((m) => [m.id, m.label])];
   $('#settings-content').innerHTML =
-    `<section class="settings-group"><h3>Command Config</h3>${field('commandMode', 'Command mode', [
+    `<section class="settings-group" id="section-command" data-title="Command Config"><h3>Command Config</h3>${field('commandMode', 'Command mode', [
       ['one', 'One Command'],
       ['perModel', 'Per Model']
     ])}
@@ -272,7 +362,7 @@ function renderSettings() {
           ''
         )}</select><button data-action="addCommand" ${draft.models.every((m) => draft.modelCommands.some((r) => r.modelId === m.id)) ? 'disabled' : ''}>Add model command</button><button data-action="addOtherwise" ${draft.modelCommands.some((r) => r.modelId === '*') ? 'disabled' : ''}>Add Otherwise</button></div>`
   }
-  </section><section class="settings-group"><h3>llama.cpp installation</h3>${field(
+  </section><section class="settings-group" id="section-installation" data-title="llama.cpp installation"><h3>llama.cpp installation</h3>${field(
     'installation',
     'Server binary',
     [
@@ -292,8 +382,30 @@ function renderSettings() {
       ['::1', '::1']
     ]
   )}${field('port', 'Port', 'number')}${field('env', 'Environment variables', 'json', 'JSON object. Use API key/token controls below for secrets.')}${field('apiPath', 'Chat completions API path')}${field('extraBody', 'Additional API request fields', 'json')}${field('launchOnOpen', 'Launch default model on open', 'checkbox')}${field('autoRestart', 'Restart after unexpected exit (maximum 3)', 'checkbox')}${field('startupTimeoutSeconds', 'Startup timeout (seconds)', 'number')}<div class="actions"><button data-action="apiKey">Set server API key</button><button data-action="hfToken">Set Hugging Face token</button></div></details></section>
-  <section class="settings-group"><h3>Models</h3><div id="models" role="table" aria-label="Configured models">${draft.models.map(modelRow).join('')}</div><div class="actions"><button data-action="addModel">+ Add model</button><button data-action="presets">Add from recommended</button></div><div id="preset-picker" hidden></div><small class="error-text" data-error="models"></small></section>
-  <section class="settings-group"><h3>Conversation</h3>${field('defaultModel', 'Default model', modelOptions)}${field('systemPrompt', 'System prompt', 'textarea')}<details><summary>Generation and context</summary>${field('temperature', 'Temperature', 'number')}${field('maxOutput', 'Maximum output tokens', 'number')}${field('context', 'Default context tokens', 'number')}${field('streaming', 'Stream responses', 'checkbox')}${field('timeoutSeconds', 'Request timeout (seconds)', 'number')}${field('retries', 'Retries before any output (0–5)', 'number')}${field('concurrency', 'Concurrent requests (one active turn)', 'number')}${field('autoCompact', 'Auto compact at context limit', 'checkbox')}${field(
+  <section class="settings-group" id="section-models" data-title="Models"><h3>Models</h3><div id="models" role="table" aria-label="Configured models">${draft.models.map(modelRow).join('')}</div><div class="actions"><button data-action="addModel">+ Add model</button><button data-action="presets">Add from recommended</button></div><div id="preset-picker" hidden></div><small class="error-text" data-error="models"></small></section>
+  <section class="settings-group" id="section-agent" data-title="Agent tools"><h3>Agent tools</h3>${field('agentTools', 'Let the model read, edit, create and delete workspace files, run commands, and ask you questions', 'checkbox', 'Needs an open, trusted workspace folder. Tool calls require llama-server --jinja, which is added automatically when the binary supports it.')}${field(
+    'approvalMode',
+    'Approval mode',
+    [
+      ['manual', 'Manual: ask me before protected actions'],
+      ['auto', 'Auto: a reviewer model answers yes / yes, don’t ask again / no']
+    ]
+  )}${field(
+    'reviewStrategy',
+    'Reviewer',
+    [
+      ['same', 'Same model in a fresh context'],
+      ['separate', 'Separate model; temporarily switch servers']
+    ]
+  )}${field('reviewModel', 'Reviewer model', modelOptions)}<div class="field"><span>Tool permissions</span><div class="permission-table">${TOOL_LABELS.map(([name, label]) => `<label class="permission-row"><span>${esc(label)}</span><select data-permission="${name}" aria-label="${esc(label)} permission">${opts(
+    [
+      ['allow', 'Allow'],
+      ['ask', 'Ask'],
+      ['deny', 'Deny']
+    ],
+    draft.toolPermissions?.[name] || 'ask'
+  )}</select></label>`).join('')}</div><small>Ask follows the approval mode above. “Yes, don’t ask again” lasts for this VS Code session.</small><small class="error-text" data-error="toolPermissions"></small></div>${field('commandTimeoutSeconds', 'Command timeout (seconds)', 'number')}${field('maxToolOutputKB', 'Maximum tool output (KB)', 'number')}${field('maxToolRounds', 'Maximum tool rounds per message', 'number')}<div class="actions"><button data-action="resetApprovals">Reset session approvals${state.approvals?.length ? ` (${state.approvals.length})` : ''}</button></div></section>
+  <section class="settings-group" id="section-conversation" data-title="Conversation"><h3>Conversation</h3>${field('defaultModel', 'Default model', modelOptions)}${field('systemPrompt', 'System prompt', 'textarea')}<details><summary>Generation and context</summary>${field('temperature', 'Temperature', 'number')}${field('maxOutput', 'Maximum output tokens', 'number')}${field('context', 'Default context tokens', 'number')}${field('streaming', 'Stream responses', 'checkbox')}${field('timeoutSeconds', 'Request timeout (seconds)', 'number')}${field('retries', 'Retries before any output (0–5)', 'number')}${field('concurrency', 'Concurrent requests (one active turn)', 'number')}${field('autoCompact', 'Auto compact at context limit', 'checkbox')}${field(
     'compactionStrategy',
     'Compaction strategy',
     [
@@ -308,15 +420,60 @@ function renderSettings() {
       ['conservative', 'Conservative UTF-8 byte estimate']
     ]
   )}<div class="actions"><button data-action="summary">Inspect summary</button><button data-action="compact">Compact / retry</button></div></details></section>
-  <section class="settings-group"><h3>Storage and privacy</h3>${field('modelDirectory', 'Model download directory')}<button data-action="browse" data-field="modelDirectory">Browse directory</button>${field('minFreeGB', 'Keep free disk space (GiB)', 'number')}${field(
+  <section class="settings-group" id="section-storage" data-title="Storage and privacy"><h3>Storage and privacy</h3>${field('modelDirectory', 'Model download directory')}<button data-action="browse" data-field="modelDirectory">Browse directory</button>${field('minFreeGB', 'Keep free disk space (GiB)', 'number')}${field(
     'checksum',
     'Download checksum policy',
     [
       ['when-available', 'Verify publisher checksum when available'],
       ['required', 'Require SHA-256']
     ]
-  )}<details><summary>History, workspace and accessibility</summary>${field('saveChats', 'Save local chat history', 'checkbox')}${field('retention', 'Conversations retained on disk', 'number')}<div class="actions"><button data-action="exportChat">Export current chat</button><button data-action="deleteChats">Delete all conversations…</button></div>${field('allowWorkspace', 'Allow explicitly attached workspace context', 'checkbox')}${field('maxFileKB', 'Maximum attached file size (KB)', 'number')}${field('logging', 'Keep diagnostic logs in memory', 'checkbox')}${field('verbosity', 'Diagnostic verbosity', ['debug', 'info', 'warning', 'error'])}${field('sensitiveArguments', 'Sensitive command arguments', 'json')}${field('redactionPatterns', 'Literal strings to redact', 'json')}${field('fontSize', 'Chat font size (10–24)', 'number')}${field('reducedMotion', 'Reduce motion', 'checkbox')}<p class="muted">No telemetry. Chat requests go to your managed loopback server. File context is only read when explicitly attached. Downloads contact GitHub or your chosen model source.</p></details></section><div class="settings-footer"><button class="primary" data-action="save">Save changes</button><button data-action="discard">Discard edits</button></div>`;
+  )}<details><summary>History, workspace and accessibility</summary>${field('saveChats', 'Save local chat history', 'checkbox')}${field('retention', 'Conversations retained on disk', 'number')}<div class="actions"><button data-action="exportChat">Export current chat</button><button data-action="deleteChats">Delete all conversations…</button></div>${field('allowWorkspace', 'Allow explicitly attached workspace context', 'checkbox')}${field('maxFileKB', 'Maximum attached file size (KB)', 'number')}${field('logging', 'Keep diagnostic logs in memory', 'checkbox')}${field('verbosity', 'Diagnostic verbosity', ['debug', 'info', 'warning', 'error'])}${field('sensitiveArguments', 'Sensitive command arguments', 'json')}${field('redactionPatterns', 'Literal strings to redact', 'json')}${field('fontSize', 'Chat font size (10–24)', 'number')}${field('reducedMotion', 'Reduce motion', 'checkbox')}<p class="muted">No telemetry. Chat requests go to your managed loopback server. File context is only read when explicitly attached. Downloads contact GitHub or your chosen model source.</p></details></section>`;
+  renderSettingsNav();
   renderSettingState();
+}
+function settingsSections() {
+  return [...document.querySelectorAll('#settings-content .settings-group[id]')];
+}
+function renderSettingsNav() {
+  $('#settings-nav').innerHTML = settingsSections()
+    .map(
+      (section) =>
+        `<button type="button" data-jump="${section.id}" title="${esc(section.dataset.title)}">${esc(section.dataset.title)}</button>`
+    )
+    .join('');
+  updateSettingsNav();
+}
+// Highlights the section under the top of the settings scroller.
+function updateSettingsNav() {
+  const scroller = $('#settings-scroll');
+  const sections = settingsSections();
+  if (!sections.length) return;
+  let current = sections[0];
+  if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2)
+    current = sections.at(-1);
+  else for (const section of sections) if (section.offsetTop - scroller.scrollTop <= 48) current = section;
+  for (const link of $('#settings-nav').querySelectorAll('[data-jump]')) {
+    const active = link.dataset.jump === current.id;
+    link.classList.toggle('current', active);
+    if (active) link.setAttribute('aria-current', 'true');
+    else link.removeAttribute('aria-current');
+  }
+}
+let navFrame = 0;
+$('#settings-scroll').addEventListener('scroll', () => {
+  if (navFrame) return;
+  navFrame = requestAnimationFrame(() => {
+    navFrame = 0;
+    updateSettingsNav();
+  });
+});
+function jumpToSection(sectionId) {
+  const section = document.getElementById(sectionId);
+  if (!section) return;
+  $('#settings-scroll').scrollTo({
+    top: Math.max(0, section.offsetTop - 6),
+    behavior: document.body.classList.contains('reduced-motion') ? 'auto' : 'smooth'
+  });
 }
 function modelRow(m) {
   const v = state.validations[m.id];
@@ -429,6 +586,10 @@ document.addEventListener('input', (event) => {
     else draft.modelCommands.find((r) => r.modelId === el.dataset.command).command = el.value;
     markDirty();
   }
+  if (el.dataset.permission) {
+    draft.toolPermissions = { ...(draft.toolPermissions || {}), [el.dataset.permission]: el.value };
+    markDirty();
+  }
   if (el.id === 'log-search') renderLogs();
   if (el.id === 'prompt') vscode.setState({ tab, prompt: el.value });
 });
@@ -450,6 +611,22 @@ $('#prompt').addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     submit();
+  }
+});
+function replyText(promptId) {
+  const input = $('#reply-input');
+  if (!input || input.dataset.prompt !== promptId) return;
+  const value = input.value.trim();
+  if (!value) {
+    feedback('Type an answer first.', true);
+    return;
+  }
+  send('toolReply', { id: promptId, value });
+}
+document.addEventListener('keydown', (event) => {
+  if (event.target.id === 'reply-input' && event.key === 'Enter' && !event.isComposing) {
+    event.preventDefault();
+    replyText(event.target.dataset.prompt);
   }
 });
 $('.tabs').addEventListener('keydown', (event) => {
@@ -478,6 +655,11 @@ document.addEventListener('click', (event) => {
   const nav = event.target.closest('[data-tab]');
   if (nav) {
     changeTab(nav.dataset.tab);
+    return;
+  }
+  const jump = event.target.closest('[data-jump]');
+  if (jump) {
+    jumpToSection(jump.dataset.jump);
     return;
   }
   const el = event.target.closest('[data-action]');
@@ -509,6 +691,15 @@ document.addEventListener('click', (event) => {
         temperature: Number($('#temperature').value),
         maxOutput: Number($('#max-output').value)
       });
+      break;
+    case 'toggleApproval':
+      postConfigPatch({ approvalMode: state.config.approvalMode === 'auto' ? 'manual' : 'auto' });
+      break;
+    case 'reply':
+      send('toolReply', { id, value: el.dataset.value });
+      break;
+    case 'replyText':
+      replyText(id);
       break;
     case 'renameChat':
       send(action);

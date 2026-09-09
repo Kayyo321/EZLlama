@@ -5,7 +5,7 @@ const http = require('node:http');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { Logger, completion, countTokens, validateModel } = require('../src/runtime');
+const { Logger, completion, completionDetailed, countTokens, validateModel } = require('../src/runtime');
 const { configuration } = require('../src/config');
 test('secrets, sensitive flags and literal redactions are removed', () => {
   const log = new Logger(
@@ -115,4 +115,81 @@ test('GGUF validation rejects HTML and verifies reference hashes', async (t) => 
 test('conservative fallback budgets non-ASCII bytes', async () => {
   const messages = [{ role: 'user', content: '你好' }];
   assert.ok((await countTokens('', messages, 'conservative')) >= Buffer.byteLength('你好'));
+});
+test('streamed tool calls are assembled from indexed fragments', async (t) => {
+  let body;
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    body = JSON.parse(Buffer.concat(chunks));
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    res.end(
+      'data: {"choices":[{"delta":{"role":"assistant","content":"Let me look. "}}]}\n\n' +
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"read_file","arguments":"{\\"pa"}}]}}]}\n\n' +
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"th\\":\\"a.txt\\"}"}}]}}]}\n\n' +
+        'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n' +
+        'data: [DONE]\n\n'
+    );
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => server.close());
+  const tools = [{ type: 'function', function: { name: 'read_file', parameters: {} } }];
+  const result = await completionDetailed(
+    `http://127.0.0.1:${server.address().port}`,
+    configuration(),
+    [{ role: 'user', content: 'Read it' }],
+    { tools }
+  );
+  assert.equal(result.content, 'Let me look. ');
+  assert.deepEqual(result.toolCalls, [
+    { id: 'call_1', name: 'read_file', arguments: '{"path":"a.txt"}' }
+  ]);
+  assert.equal(result.finishReason, 'tool_calls');
+  assert.deepEqual(body.tools, tools);
+  assert.equal(body.tool_choice, 'auto');
+});
+test('non-streaming responses expose tool calls even when content is null', async (t) => {
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks));
+    res.setHeader('Content-Type', 'application/json');
+    res.end(
+      JSON.stringify({
+        choices: [
+          {
+            finish_reason: body.tools ? 'tool_calls' : 'stop',
+            message: {
+              content: null,
+              ...(body.tools
+                ? {
+                    tool_calls: [
+                      {
+                        id: 'x',
+                        type: 'function',
+                        function: { name: 'run_command', arguments: '{"command":"ls"}' }
+                      }
+                    ]
+                  }
+                : {})
+            }
+          }
+        ]
+      })
+    );
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => server.close());
+  const result = await completionDetailed(
+    `http://127.0.0.1:${server.address().port}`,
+    configuration({ streaming: false }),
+    [],
+    { tools: [{ type: 'function', function: { name: 'run_command' } }] }
+  );
+  assert.equal(result.content, '');
+  assert.deepEqual(result.toolCalls, [{ id: 'x', name: 'run_command', arguments: '{"command":"ls"}' }]);
+  await assert.rejects(
+    completion(`http://127.0.0.1:${server.address().port}`, configuration({ streaming: false }), []),
+    /no assistant content/
+  );
 });

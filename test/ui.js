@@ -44,6 +44,8 @@ async function main() {
       busy: false,
       attachments: [],
       jobs: [],
+      approvals: [],
+      workspace: true,
       presets: require('../data/presets.json')
     };
     const update = () =>
@@ -58,7 +60,25 @@ async function main() {
     assert.match(await page.locator('#context-meter').getAttribute('aria-label'), /Estimated context remaining/);
     await fs.mkdir(path.join(root, '.debug/screenshots'), { recursive: true });
     await page.screenshot({ path: path.join(root, '.debug/screenshots/chat-empty.png') });
+    assert.equal(await page.locator('#approval-mode').textContent(), 'Manual');
+    await page.evaluate(() =>
+      window.dispatchEvent(
+        new MessageEvent('message', { data: { type: 'progress', text: 'Overlay notice' } })
+      )
+    );
+    assert.equal(
+      await page.locator('#feedback').evaluate((e) => getComputedStyle(e).position),
+      'absolute'
+    );
     await page.locator('#tab-settings').click();
+    assert.equal(await page.locator('#settings-nav [data-jump]').count(), 6);
+    await page.locator('#settings-nav [data-jump=section-storage]').click();
+    await page.waitForTimeout(600);
+    assert.equal(
+      await page.locator('#settings-nav .current').getAttribute('data-jump'),
+      'section-storage'
+    );
+    assert.equal(await page.locator('[data-permission]').count(), 8);
     assert.ok(await page.locator('[data-action=save]').first().isDisabled());
     await page.locator('[data-action=addModel]').click();
     assert.ok(!(await page.locator('[data-action=save]').first().isDisabled()));
@@ -119,6 +139,26 @@ async function main() {
     await update();
     assert.equal(await page.locator('.compaction-progress').count(), 0);
     assert.equal(await page.locator('.compaction-center').textContent(), 'Chat Compacted, Context Reset');
+    state.active.messages.push({
+      id: 'tool',
+      role: 'tool',
+      toolCallId: 'c1',
+      name: 'run_command',
+      arguments: '{"command":"npm test"}',
+      summary: 'run: npm test',
+      status: 'awaiting',
+      prompt: { id: 'p1', kind: 'approval' }
+    });
+    await update();
+    assert.equal(await page.locator('.tool-prompt [data-action=reply]').count(), 3);
+    await page.locator('[data-value=always]').click();
+    assert.deepEqual((await page.evaluate(() => window.outbox)).at(-1), {
+      type: 'toolReply',
+      id: 'p1',
+      value: 'always'
+    });
+    state.active.messages.pop();
+    await update();
     await page.locator('#prompt').fill('Hello');
     await page.locator('#prompt').press('Shift+Enter');
     await page.locator('#prompt').type('world');

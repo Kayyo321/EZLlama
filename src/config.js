@@ -46,7 +46,24 @@ const defaults = {
   fontSize: 13,
   reducedMotion: false,
   apiPath: '/v1/chat/completions',
-  extraBody: {}
+  extraBody: {},
+  agentTools: true,
+  approvalMode: 'manual',
+  reviewStrategy: 'same',
+  reviewModel: '',
+  toolPermissions: {
+    read_file: 'allow',
+    list_files: 'allow',
+    search_files: 'allow',
+    ask_user: 'allow',
+    write_file: 'ask',
+    edit_file: 'ask',
+    delete_file: 'ask',
+    run_command: 'ask'
+  },
+  commandTimeoutSeconds: 120,
+  maxToolOutputKB: 64,
+  maxToolRounds: 40
 };
 function configuration(value = {}) {
   // VS Code may return configuration values backed by an IPC proxy. Those values
@@ -202,7 +219,10 @@ function validateConfig(raw) {
     ['retention', 1, 1000],
     ['maxFileKB', 1, 10240],
     ['fontSize', 10, 24],
-    ['concurrency', 1, 1]
+    ['concurrency', 1, 1],
+    ['commandTimeoutSeconds', 1, 3600],
+    ['maxToolOutputKB', 1, 4096],
+    ['maxToolRounds', 1, 500]
   ]) {
     if (!Number.isInteger(c[key]) || c[key] < min || c[key] > max)
       fail(key, `Use an integer from ${min} to ${max}.`);
@@ -219,7 +239,9 @@ function validateConfig(raw) {
     compactionStrategy: ['same', 'separate'],
     checksum: ['when-available', 'required'],
     verbosity: ['debug', 'info', 'warning', 'error'],
-    tokenCounting: ['auto', 'conservative']
+    tokenCounting: ['auto', 'conservative'],
+    approvalMode: ['manual', 'auto'],
+    reviewStrategy: ['same', 'separate']
   }))
     if (!choices.includes(c[key])) fail(key, 'Choose a listed option.');
   for (const key of [
@@ -230,6 +252,7 @@ function validateConfig(raw) {
     'modelDirectory',
     'defaultModel',
     'compactionModel',
+    'reviewModel',
     'apiPath'
   ])
     if (typeof c[key] !== 'string') fail(key, 'Expected text.');
@@ -241,9 +264,21 @@ function validateConfig(raw) {
     'saveChats',
     'allowWorkspace',
     'logging',
-    'reducedMotion'
+    'reducedMotion',
+    'agentTools'
   ])
     if (typeof c[key] !== 'boolean') fail(key, 'Expected a toggle.');
+  // Permissions merge with defaults so a tool added later is never silently unrestricted.
+  const permissions =
+    c.toolPermissions && typeof c.toolPermissions === 'object' && !Array.isArray(c.toolPermissions)
+      ? c.toolPermissions
+      : {};
+  c.toolPermissions = { ...defaults.toolPermissions };
+  for (const [tool, value] of Object.entries(permissions)) {
+    if (!(tool in defaults.toolPermissions) || !['allow', 'ask', 'deny'].includes(value))
+      fail('toolPermissions', 'Use allow, ask, or deny for each known tool.');
+    else c.toolPermissions[tool] = value;
+  }
   if (typeof c.apiPath !== 'string' || !/^\/[a-zA-Z0-9/_-]+$/.test(c.apiPath))
     fail('apiPath', 'Use a relative API path, e.g. /v1/chat/completions.');
   if (
@@ -309,6 +344,8 @@ function validateConfig(raw) {
   if (c.defaultModel && !ids.has(c.defaultModel)) fail('defaultModel', 'Choose an added model.');
   if (c.compactionStrategy === 'separate' && !ids.has(c.compactionModel))
     fail('compactionModel', 'Choose a compaction model.');
+  if (c.reviewStrategy === 'separate' && !ids.has(c.reviewModel))
+    fail('reviewModel', 'Choose a reviewer model.');
   if (c.maxOutput + c.reservedBuffer >= c.context)
     fail('maxOutput', 'Output and reserved buffer must fit within the default context.');
   if (
