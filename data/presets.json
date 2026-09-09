@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "reviewed": "2026-09-09",
+  "note": "Estimates include weight storage, not all KV cache. Start at 4096 context. CPU is supported; GPU memory is optional. Community GGUF conversions; inspect each source and license. Single-file models only.",
+  "models": [
+    {
+      "label": "Qwen2.5 Coder 0.5B",
+      "family": "Qwen2.5 Coder",
+      "quant": "0.5B · Q4_K_M",
+      "disk": "0.4 GB",
+      "memory": "4 GB RAM / 1 GB VRAM",
+      "use": "Tiny edits and learning",
+      "limitation": "Limited reasoning and instruction reliability",
+      "path": "Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
+      "context": 4096
+    },
+    {
+      "label": "Qwen2.5 Coder 1.5B",
+      "family": "Qwen2.5 Coder",
+      "quant": "1.5B · Q4_K_M",
+      "disk": "1.1 GB",
+      "memory": "6 GB RAM / 2 GB VRAM",
+      "use": "Small functions and explanations",
+      "limitation": "Review generated code carefully",
+      "path": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+      "context": 4096
+    },
+    {
+      "label": "Qwen2.5 Coder 3B",
+      "family": "Qwen2.5 Coder",
+      "quant": "3B · Q4_K_M",
+      "disk": "2.1 GB",
+      "memory": "8 GB RAM / 4 GB VRAM",
+      "use": "Laptop coding chat",
+      "limitation": "Complex repository reasoning is limited",
+      "path": "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+      "context": 4096
+    },
+    {
+      "label": "Qwen2.5 Coder 3B · quality",
+      "family": "Qwen2.5 Coder",
+      "quant": "3B · Q8_0",
+      "disk": "3.3 GB",
+      "memory": "10 GB RAM / 6 GB VRAM",
+      "use": "Higher precision small-model coding",
+      "limitation": "More memory than Q4; same model capability ceiling",
+      "path": "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/qwen2.5-coder-3b-instruct-q8_0.gguf",
+      "context": 4096
+    },
+    {
+      "label": "Qwen2.5 Coder 7B",
+      "family": "Qwen2.5 Coder",
+      "quant": "7B · Q4_K_M",
+      "disk": "4.7 GB",
+      "memory": "12 GB RAM / 6 GB VRAM",
+      "use": "Balanced everyday coding",
+      "limitation": "CPU generation can be slow",
+      "path": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+      "context": 4096
+    },
+    {
+      "label": "Qwen2.5 Coder 7B · quality",
+      "family": "Qwen2.5 Coder",
+      "quant": "7B · Q8_0",
+      "disk": "8.1 GB",
+      "memory": "16 GB RAM / 12 GB VRAM",
+      "use": "Higher precision coding and refactoring",
+      "limitation": "Large KV cache needs additional memory",
+      "path": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/qwen2.5-coder-7b-instruct-q8_0.gguf",
+      "context": 4096
+    },
+    {
+      "label": "Qwen2.5 Coder 14B",
+      "family": "Qwen2.5 Coder",
+      "quant": "14B · Q4_K_M",
+      "disk": "9.0 GB",
+      "memory": "20 GB RAM / 12 GB VRAM",
+      "use": "Multi-file planning and debugging",
+      "limitation": "Attach only relevant files to fit context",
+      "path": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF/Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
+      "context": 4096
+    },
+    {
+      "label": "Qwen2.5 Coder 14B · quality",
+      "family": "Qwen2.5 Coder",
+      "quant": "14B · Q6_K",
+      "disk": "12.1 GB",
+      "memory": "24 GB RAM / 16 GB VRAM",
+      "use": "More precise medium-model coding",
+      "limitation": "Requires a capable desktop for responsive output",
+      "path": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF/Qwen2.5-Coder-14B-Instruct-Q6_K.gguf",
+      "context": 4096
+    },
+    {
+      "label": "Qwen2.5 Coder 32B",
+      "family": "Qwen2.5 Coder",
+      "quant": "32B · Q4_K_M",
+      "disk": "19.9 GB",
+      "memory": "32 GB RAM / 24 GB VRAM",
+      "use": "Advanced coding and larger refactors",
+      "limitation": "CPU-only inference is slow; full offload needs substantial VRAM",
+      "path": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf",
+      "context": 4096
+    },
+    {
+      "label": "Qwen2.5 Coder 32B · quality",
+      "family": "Qwen2.5 Coder",
+      "quant": "32B · Q6_K",
+      "disk": "26.9 GB",
+      "memory": "48 GB RAM / 32 GB VRAM",
+      "use": "High-end local coding workstation",
+      "limitation": "High memory and power requirements",
+      "path": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/Qwen2.5-Coder-32B-Instruct-Q6_K.gguf",
+      "context": 4096
+    }
+  ]
+}

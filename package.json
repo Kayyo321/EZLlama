@@ -1,0 +1,83 @@
+{
+  "name": "ezllama",
+  "displayName": "EZLlama",
+  "description": "Local coding conversations powered by llama.cpp.",
+  "version": "0.1.0",
+  "publisher": "Kayyo321",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": false
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kayyo321/EZLlama.git"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node scripts/check.js",
+    "debug": "node scripts/debug.js",
+    "test:host": "node scripts/debug.js --test"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "ezllama.open",
+        "title": "EZLlama: Open Chat"
+      },
+      {
+        "command": "ezllama.stop",
+        "title": "EZLlama: Stop Model"
+      },
+      {
+        "command": "ezllama.attachSelection",
+        "title": "EZLlama: Include Editor Selection"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ezllama",
+          "title": "EZLlama",
+          "icon": "media/llama.svg"
+        }
+      ]
+    },
+    "views": {
+      "ezllama": [
+        {
+          "type": "webview",
+          "id": "ezllama.chat",
+          "name": "EZLlama"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "EZLlama",
+      "properties": {
+        "ezllama.config": {
+          "type": "object",
+          "default": {},
+          "scope": "machine",
+          "description": "EZLlama configuration. Use the extension's Settings tab for validated editing. Keep API keys in Secret Storage via Settings."
+        }
+      }
+    }
+  }
+}

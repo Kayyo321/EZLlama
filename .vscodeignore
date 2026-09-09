@@ -1,0 +1,6 @@
+.git/**
+.debug/**
+test/**
+scripts/**
+PROJECT.md
+.vscode/**
