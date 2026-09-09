@@ -69,7 +69,24 @@ function changeTab(value) {
   }
   if (value === 'console') renderLogs();
 }
-function markdown(content) {
+// Copying puts nothing on screen, so the control that was clicked lights up for a
+// moment. The transcript re-renders while a reply streams, so the lit control is
+// remembered by key and re-applied to the button that replaces it.
+let copied = { key: '', timer: 0 };
+function clearCopied() {
+  copied = { key: '', timer: 0 };
+  for (const b of document.querySelectorAll('.copied')) b.classList.remove('copied');
+}
+function flashCopied(button, key) {
+  clearTimeout(copied.timer);
+  clearCopied();
+  copied = { key, timer: setTimeout(clearCopied, 1000) };
+  button.classList.add('copied');
+}
+function markCopied(button, key) {
+  if (copied.key && copied.key === key) button.classList.add('copied');
+}
+function markdown(content, key = '') {
   const rendered = DOMPurify.sanitize(marked.parse(content || '', { gfm: true, breaks: true }), {
     FORBID_TAGS: ['img', 'style', 'input', 'form', 'iframe', 'svg', 'math'],
     FORBID_ATTR: ['style'],
@@ -77,16 +94,22 @@ function markdown(content) {
   });
   const container = document.createElement('div');
   container.innerHTML = rendered;
+  let block = 0;
   for (const code of container.querySelectorAll('pre code')) {
     try {
       hljs.highlightElement(code);
     } catch {}
     const copy = document.createElement('button');
+    const copyKey = `${key}#code${block++}`;
     copy.className = 'copy-code';
     copy.textContent = 'Copy';
     copy.title = 'Copy code block';
     copy.setAttribute('aria-label', 'Copy code block');
-    copy.addEventListener('click', () => send('copy', { text: code.textContent }));
+    copy.addEventListener('click', () => {
+      flashCopied(copy, copyKey);
+      send('copy', { text: code.textContent });
+    });
+    markCopied(copy, copyKey);
     code.parentElement.prepend(copy);
   }
   for (const anchor of container.querySelectorAll('a'))
@@ -186,11 +209,15 @@ function renderTranscript() {
       copy.title = 'Copy message';
       copy.setAttribute('aria-label', 'Copy message');
       copy.innerHTML = icon('copy');
-      copy.onclick = () => send('copy', { text: message.content });
+      copy.onclick = () => {
+        flashCopied(copy, message.id);
+        send('copy', { text: message.content });
+      };
+      markCopied(copy, message.id);
       header.append(copy);
     }
     article.append(header);
-    const body = markdown(message.content);
+    const body = markdown(message.content, message.id);
     body.className = 'message-body';
     article.append(body);
     if (message.attachments?.length) {
@@ -885,6 +912,7 @@ document.addEventListener('click', (event) => {
     case 'copyLogs':
     case 'clearLogs':
     case 'exportLogs':
+      if (action === 'copyLogs') flashCopied(el, 'logs');
       send(action, { ids: logRows().map((r) => r.id) });
       break;
     case 'cancelJob':
@@ -947,7 +975,7 @@ window.addEventListener('message', (event) => {
           (x) => x.dataset.messageId === m.messageId
         );
         if (article) {
-          const content = markdown(message.content);
+          const content = markdown(message.content, message.id);
           content.className = 'message-body';
           article.querySelector('.message-body').replaceWith(content);
         }

@@ -33,6 +33,13 @@ button {
 button:hover {
   background: var(--vscode-button-secondaryHoverBackground);
 }
+/* Copying is silent, so the control lights up for a moment after a click. */
+button.copied,
+button.copied:hover {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  opacity: 1;
+}
 button:disabled {
   opacity: 0.45;
   cursor: default;
