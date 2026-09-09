@@ -348,6 +348,22 @@ function opts(values, current) {
     })
     .join('');
 }
+// Common llama.cpp context sizes, offered as one-click fills next to the
+// context inputs. Anything else keeps the select on "Custom".
+const CONTEXT_PRESETS = [
+  [4096, 'Low · 4,096'],
+  [8192, 'Medium · 8,192'],
+  [32768, 'High · 32,768'],
+  [131072, 'Ultra high · 131,072']
+];
+// Pairs a context number input with a select that fills in a preset size.
+function contextInput(input, current) {
+  const selected = CONTEXT_PRESETS.some(([value]) => value === Number(current)) ? Number(current) : '';
+  return `<div class="context-input">${input}<select data-context-preset aria-label="Context size presets">${opts(
+    [['', 'Custom…'], ...CONTEXT_PRESETS],
+    selected
+  )}</select></div>`;
+}
 function field(key, label, type = 'text', help = '') {
   let input;
   if (Array.isArray(type))
@@ -356,6 +372,11 @@ function field(key, label, type = 'text', help = '') {
     input = `<input type="checkbox" data-config="${key}" ${draft[key] ? 'checked' : ''}>`;
   else if (type === 'textarea' || type === 'json')
     input = `<textarea rows="3" data-config="${key}" ${type === 'json' ? 'data-json="true"' : ''}>${esc(type === 'json' ? JSON.stringify(draft[key], null, 2) : draft[key])}</textarea>`;
+  else if (type === 'context')
+    input = contextInput(
+      `<input type="number" data-config="${key}" value="${esc(draft[key])}" step="any">`,
+      draft[key]
+    );
   else
     input = `<input type="${type}" data-config="${key}" value="${esc(draft[key])}" ${type === 'number' ? 'step="any"' : ''}>`;
   return `<label class="field ${type === 'checkbox' ? 'check-field' : ''}"><span>${esc(label)}</span>${input}${help ? `<small>${esc(help)}</small>` : ''}<small class="error-text" data-error="${key}">${esc(state.errors[key] || '')}</small></label>`;
@@ -433,7 +454,7 @@ function renderSettings() {
     ],
     draft.toolPermissions?.[name] || 'ask'
   )}</select></label>`).join('')}</div><small>Ask follows the approval mode above. “Yes, don’t ask again” lasts for this VS Code session.</small><small class="error-text" data-error="toolPermissions"></small></div>${field('commandTimeoutSeconds', 'Command timeout (seconds)', 'number')}${field('maxToolOutputKB', 'Maximum tool output (KB)', 'number')}${field('maxToolRounds', 'Maximum tool rounds per message', 'number')}<div class="actions"><button data-action="resetApprovals">Reset session approvals${state.approvals?.length ? ` (${state.approvals.length})` : ''}</button></div></section>
-  <section class="settings-group" id="section-conversation" data-title="Conversation"><h3>Conversation</h3>${field('defaultModel', 'Default model', modelOptions)}${field('systemPrompt', 'System prompt', 'textarea')}<details><summary>Generation and context</summary>${field('temperature', 'Temperature', 'number')}${field('maxOutput', 'Maximum output tokens', 'number')}${field('context', 'Default context tokens', 'number')}${field('streaming', 'Stream responses', 'checkbox')}${field('timeoutSeconds', 'Request timeout (seconds)', 'number')}${field('retries', 'Retries before any output (0–5)', 'number')}${field('concurrency', 'Concurrent requests (one active turn)', 'number')}${field('autoCompact', 'Auto compact at context limit', 'checkbox')}${field(
+  <section class="settings-group" id="section-conversation" data-title="Conversation"><h3>Conversation</h3>${field('defaultModel', 'Default model', modelOptions)}${field('systemPrompt', 'System prompt', 'textarea')}<details><summary>Generation and context</summary>${field('temperature', 'Temperature', 'number')}${field('maxOutput', 'Maximum output tokens', 'number')}${field('context', 'Default context tokens', 'context')}${field('streaming', 'Stream responses', 'checkbox')}${field('timeoutSeconds', 'Request timeout (seconds)', 'number')}${field('retries', 'Retries before any output (0–5)', 'number')}${field('concurrency', 'Concurrent requests (one active turn)', 'number')}${field('autoCompact', 'Auto compact at context limit', 'checkbox')}${field(
     'compactionStrategy',
     'Compaction strategy',
     [
@@ -523,7 +544,7 @@ function modelRow(m) {
       ['url', 'HTTPS URL']
     ],
     m.source
-  )}</select></label></div><details><summary>Parameters</summary><label>Context tokens<input type="number" data-model-field="context" value="${m.context}"></label><label>Chat template (optional)<input data-model-field="chatTemplate" value="${esc(m.chatTemplate || '')}"></label><label>Extra arguments<input data-model-field="extraArgs" value="${esc(m.extraArgs || '')}"></label><label>SHA-256 (optional)<input data-model-field="checksum" value="${esc(m.checksum || '')}"></label><small>Header validation runs on save. Tensor compatibility is checked by llama.cpp when loading.</small></details><small class="error-text" data-error="model.${esc(m.id)}"></small><div class="model-bottom"><div class="actions"><button data-action="browse" data-field="model" data-id="${esc(m.id)}">Browse</button><button data-action="removeModel" data-id="${esc(m.id)}">Remove row</button></div><span class="model-status" data-status="${esc(m.id)}">${m.source !== 'local' ? `<button data-action="downloadModel" data-id="${esc(m.id)}">Download</button>` : v?.valid ? `<span class="valid" role="img" aria-label="Validated model" title="${esc(v.details)}">✓ Ready</span>` : `<span title="${esc(v?.details || 'Save to validate')}">Unavailable</span>`}</span></div><small class="muted">${esc(m.source === 'local' ? v?.details || 'Save to validate.' : 'Save this row before downloading. No download happens when adding a preset.')}</small><div id="job-${esc(m.id)}" role="status"></div></div>`;
+  )}</select></label></div><details><summary>Parameters</summary><label>Context tokens${contextInput(`<input type="number" data-model-field="context" value="${m.context}">`, m.context)}</label><label>Chat template (optional)<input data-model-field="chatTemplate" value="${esc(m.chatTemplate || '')}"></label><label>Extra arguments<input data-model-field="extraArgs" value="${esc(m.extraArgs || '')}"></label><label>SHA-256 (optional)<input data-model-field="checksum" value="${esc(m.checksum || '')}"></label><small>Header validation runs on save. Tensor compatibility is checked by llama.cpp when loading.</small></details><small class="error-text" data-error="model.${esc(m.id)}"></small><div class="model-bottom"><div class="actions"><button data-action="browse" data-field="model" data-id="${esc(m.id)}">Browse</button><button data-action="removeModel" data-id="${esc(m.id)}">Remove row</button></div><span class="model-status" data-status="${esc(m.id)}">${m.source !== 'local' ? `<button data-action="downloadModel" data-id="${esc(m.id)}">Download</button>` : v?.valid ? `<span class="valid" role="img" aria-label="Validated model" title="${esc(v.details)}">✓ Ready</span>` : `<span title="${esc(v?.details || 'Save to validate')}">Unavailable</span>`}</span></div><small class="muted">${esc(m.source === 'local' ? v?.details || 'Save to validate.' : 'Save this row before downloading. No download happens when adding a preset.')}</small><div id="job-${esc(m.id)}" role="status"></div></div>`;
 }
 function renderSettingState() {
   $('#unsaved').textContent = dirty ? 'Unsaved changes' : 'Changes saved';
@@ -597,8 +618,17 @@ function postConfigPatch(values) {
   }
   send('save', { config: { ...state.config, ...values } });
 }
+// Keep the preset select honest when the number is typed by hand.
+function syncContextPreset(input) {
+  const select = input.parentElement?.querySelector('[data-context-preset]');
+  if (!select) return;
+  const value = Number(input.value);
+  select.value = CONTEXT_PRESETS.some(([preset]) => preset === value) ? String(value) : '';
+}
 document.addEventListener('input', (event) => {
   const el = event.target;
+  if (el.dataset.config === 'context' || el.dataset.modelField === 'context')
+    syncContextPreset(el);
   if (el.dataset.config) {
     try {
       draft[el.dataset.config] = el.dataset.json
@@ -634,6 +664,12 @@ document.addEventListener('input', (event) => {
 });
 document.addEventListener('change', (event) => {
   const el = event.target;
+  if (el.dataset.contextPreset !== undefined && el.value) {
+    const input = el.parentElement.querySelector('input');
+    input.value = el.value;
+    // Reuse the existing input wiring so the draft and dirty state follow.
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
   if (['commandMode', 'installation'].includes(el.dataset.config)) renderSettings();
   if (el.dataset.modelField === 'source') renderSettings();
   if (el.id === 'model-select') send('selectModel', { id: el.value });

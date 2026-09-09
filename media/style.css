@@ -685,6 +685,20 @@ body.reduced-motion .compaction-progress > div {
 .model-row label {
   font-size: 12px;
 }
+.context-input {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.context-input input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.context-input select {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 50%;
+}
 .check-field {
   flex-direction: row;
   flex-wrap: wrap;
