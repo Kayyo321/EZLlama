@@ -171,9 +171,13 @@ class Chat extends EventEmitter {
       await this.switchModel(original);
     }
   }
-  async compactInternal(preserveLastUser = false) {
+  async compactInternal(preserveLastUser = false, preserveTail = false) {
     const chat = this.active,
       c = this.getConfig();
+    const compactable = (to) =>
+      chat.messages
+        .slice(chat.contextStart, to)
+        .filter((m) => ['user', 'assistant', 'tool'].includes(m.role));
     let end = chat.messages.length;
     if (preserveLastUser) {
       for (let i = end - 1; i >= chat.contextStart; i--)
@@ -181,10 +185,13 @@ class Chat extends EventEmitter {
           end = i;
           break;
         }
+    } else if (preserveTail && chat.messages[end - 1]?.role === 'assistant') {
+      // Mid-generation the newest partial reply is the prefill the continuation
+      // resumes from, so keep it out of the summary — but only while something
+      // earlier is still left to reclaim.
+      if (compactable(end - 1).length) end -= 1;
     }
-    const prior = chat.messages
-      .slice(chat.contextStart, end)
-      .filter((m) => ['user', 'assistant', 'tool'].includes(m.role));
+    const prior = compactable(end);
     if (!prior.length)
       throw new Error(
         'There is no earlier context to compact. Shorten the current message or attachment, or increase context.'
@@ -531,9 +538,10 @@ class Chat extends EventEmitter {
           c.reservedBuffer +
           (tools ? 1024 : 0) <=
         (this.server.context || c.context);
-      // The first turn keeps the pending user message out of the summary; after tool
-      // rounds, the whole turn so far is summarized so long tool output can be reclaimed.
-      const ensureFits = async () => {
+      // Before the turn starts, the pending user message is kept out of the summary;
+      // once the turn has produced output, the whole turn so far is summarized so long
+      // tool results and long generations can be reclaimed.
+      const ensureFits = async (preserveLastUser = false) => {
         if (await fits()) return;
         if (!c.autoCompact)
           throw new Error(
@@ -543,14 +551,14 @@ class Chat extends EventEmitter {
           throw new Error(
             'This message and attachments still exceed context after compaction. Shorten them or increase model context.'
           );
-        await this.compactInternal(rounds === 0);
+        await this.compactInternal(preserveLastUser);
         compactedAt = rounds;
         if (!(await fits()))
           throw new Error(
             'This message and attachments still exceed context after compaction. Shorten them or increase model context.'
           );
       };
-      await ensureFits();
+      await ensureFits(true);
       newAssistant();
       while (true) {
         // On the first attempt the empty assistant is omitted. After a mid-stream
@@ -589,13 +597,18 @@ class Chat extends EventEmitter {
           break;
         } catch (e) {
           if ((e.contextOverflow || e.outputLimit) && c.autoCompact) {
-            if (!assistant.content) chat.messages.pop();
+            const produced = Boolean(assistant.content);
+            if (!produced) chat.messages.pop();
             // A `length` finish can mean either the configured output cap or
             // the slot's remaining context. Continue directly while the next
             // request still fits; compact once it no longer does.
             if (e.contextOverflow || !(await fits())) {
-              if (compactedAt === rounds) throw e;
-              await this.compactInternal(rounds === 0);
+              // A long generation is itself what filled the context, so the turn's
+              // own output has to be summarizable — preserving the user message
+              // would leave nothing to compact on a first-turn overflow. Compacting
+              // twice in a round is only a loop if the retry produced no new text.
+              if (compactedAt === rounds && !produced) throw e;
+              await this.compactInternal(false, true);
               compactedAt = rounds;
             }
             continuations++;

@@ -149,6 +149,28 @@ test('mid-stream context overflow compacts and continues after the transcript ev
   );
   assert.equal(completionCalls, 2);
 });
+test('a long first answer is compacted even though only its own output filled the context', async () => {
+  const chat = make({ context: 4096, maxOutput: 256, reservedBuffer: 128 });
+  let completionCalls = 0;
+  chat.request = async (messages, options) => {
+    if (messages[0].content.startsWith('Create')) return `Summary ${completionCalls}`;
+    completionCalls++;
+    if (completionCalls > 2) return void options.onToken?.('The end.');
+    options.onToken?.(`Scene ${completionCalls}. `.repeat(200));
+    const error = new Error('context size exceeded');
+    error.contextOverflow = true;
+    throw error;
+  };
+  await chat.send('Write a screenplay');
+  assert.equal(chat.active.compactions.length, 2);
+  assert.ok(!chat.active.messages.some((m) => m.kind === 'error'));
+  assert.equal(chat.active.messages.at(-1).content, 'The end.');
+  // The user request survives in the summary, and the newest partial stays in
+  // context so the continuation picks up where the last one stopped.
+  assert.match(chat.context()[0].content, /Summary/);
+  assert.equal(chat.active.messages[0].content, 'Write a screenplay');
+  assert.equal(completionCalls, 3);
+});
 test('output-limit finish automatically continues while context still fits', async () => {
   const chat = make({ context: 8192, maxOutput: 256, reservedBuffer: 128 });
   let calls = 0;

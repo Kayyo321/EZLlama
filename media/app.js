@@ -167,7 +167,13 @@ function renderTranscript() {
       article.classList.add(`compaction-${message.status || 'complete'}`);
       article.setAttribute('role', 'status');
       article.setAttribute('aria-live', 'polite');
-      article.innerHTML = `<div class="compaction-line" aria-hidden="true"></div><div class="compaction-center">${message.status === 'running' ? `<div class="compaction-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(compactionPercent(message.progress))}"><div style="width:${Math.round(compactionPercent(message.progress))}%"></div></div>` : ''}<span>${esc(message.content)}</span></div><div class="compaction-line" aria-hidden="true"></div>`;
+      const percent = compactionPercent(message.progress);
+      article.innerHTML = `<div class="compaction-line" aria-hidden="true"></div><div class="compaction-center">${message.status === 'running' ? `<div class="compaction-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><div></div></div>` : ''}<span>${esc(message.content)}</span></div><div class="compaction-line" aria-hidden="true"></div>`;
+      // The webview CSP has no 'unsafe-inline' for styles, so a `style` attribute in
+      // this markup is dropped and the fill would stretch to the full track. Set the
+      // width through the CSSOM, which the policy does not cover.
+      const fill = article.querySelector('.compaction-progress > div');
+      if (fill) fill.style.width = `${percent}%`;
       root.append(article);
       continue;
     }

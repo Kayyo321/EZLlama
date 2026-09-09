@@ -287,6 +287,8 @@ h3 {
 }
 .compaction-progress > div {
   height: 100%;
+  /* Set from script; an unstyled block would otherwise fill the whole track. */
+  width: 0;
   border-radius: 2px;
   background: var(--vscode-progressBar-background, var(--vscode-focusBorder));
   transition: width 0.25s ease-out;
