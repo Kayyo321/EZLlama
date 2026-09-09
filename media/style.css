@@ -313,6 +313,22 @@ h3 {
   color: var(--vscode-descriptionForeground);
   margin-right: auto;
 }
+.context-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.context-meter svg {
+  width: 17px;
+  height: 17px;
+}
+.context-meter.low {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
 .compact-group {
   display: flex;
   align-items: center;

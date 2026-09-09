@@ -17,6 +17,7 @@ const icons = {
   stop: '<rect x="6" y="6" width="12" height="12" rx="1"/>',
   clip: '<path d="m8 13 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l9-9m3 7-7 7"/>',
   selection: '<path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4M8 12h8"/>',
+  context: '<path d="M4 19a9 9 0 1 1 16 0"/><path d="M12 12l4-4M5 19h14"/>',
   compact: '<path d="M4 4h16M4 20h16m-8-14v5m-3-2 3 3 3-3m-3 9v-5m-3 2 3-3 3 3"/>',
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   copy: '<rect x="8" y="8" width="12" height="12" rx="1"/><path d="M15 8V4H4v11h4"/>',
@@ -44,6 +45,7 @@ app.innerHTML = `<nav class="tabs" role="tablist" aria-label="EZLlama views">${[
  <div id="composer"><div id="attachments"></div><div class="toolbar">
  ${button('newChat', 'New chat', 'plus')}${button('attach', 'Attach workspace files', 'clip')}${button('selection', 'Include editor selection', 'selection')}
  <span class="mode" title="Chat with workspace context; changes are proposed as code or diffs">Chat</span>
+ <span id="context-meter" class="context-meter" role="status" title="Context remaining" aria-label="Context remaining">${icon('context')}<span></span></span>
  <span class="compact-group">${button('compact', 'Compact chat', 'compact')}<label class="auto" title="Automatically summarize at the context limit"><input id="auto-compact" type="checkbox">Auto</label></span>
  <details class="overflow"><summary title="More chat controls" aria-label="More chat controls">${icon('more')}</summary><div class="popover"><button data-action="clearChat">Clear chat…</button><button data-action="exportChat">Export chat</button><button data-action="summary">Inspect summary</button><label>Temperature<input id="temperature" type="number" min="0" max="2" step="0.1"></label><label>Max output<input id="max-output" type="number" min="16" max="131072"></label><button data-action="saveGeneration">Save generation settings</button></div></details>
  ${button('stopGeneration', 'Stop generation', 'stop', 'id="stop-generation"')}
@@ -188,11 +190,39 @@ function renderChat() {
         `<button data-action="removeAttachment" data-id="${esc(a.id)}" title="Remove ${esc(a.name)}">${esc(a.name)} ×</button>`
     )
     .join('');
+  renderContextMeter();
   for (const b of document.querySelectorAll(
     '[data-action="compact"],[data-action="newChat"],[data-action="clearChat"]'
   ))
     b.disabled = state.busy;
   renderTranscript();
+}
+function contextEstimate() {
+  const chat = state.active;
+  const limit = state.server.context || state.config.models.find((m) => m.id === state.selected)?.context || state.config.context;
+  const inputLimit = Math.max(0, limit - state.config.maxOutput - state.config.reservedBuffer);
+  const messages = [state.config.systemPrompt, chat?.summary || ''].concat(
+    (chat?.messages || [])
+      .slice(chat?.contextStart || 0)
+      .filter((m) => ['user', 'assistant'].includes(m.role))
+      .map((m) => m.contextContent || m.content || '')
+  );
+  // This stays available while the server is stopped. It is deliberately conservative for code-heavy chats.
+  const used = Math.ceil(messages.join('\n\n').length / 3.5);
+  return { limit: inputLimit, used, remaining: Math.max(0, inputLimit - used) };
+}
+function renderContextMeter() {
+  const meter = $('#context-meter');
+  const { limit, remaining } = contextEstimate();
+  const percent = limit ? Math.round((remaining / limit) * 100) : 0;
+  const text = limit ? `≈ ${remaining.toLocaleString()} left` : 'Context unavailable';
+  const label = limit
+    ? `Estimated context remaining: ${remaining.toLocaleString()} of ${limit.toLocaleString()} usable input tokens (${percent}%).`
+    : 'Context remaining is unavailable until a model context is configured.';
+  meter.classList.toggle('low', percent < 20);
+  meter.title = label;
+  meter.setAttribute('aria-label', label);
+  meter.querySelector('span').textContent = text;
 }
 function opts(values, current) {
   return values
@@ -293,6 +323,7 @@ function modelRow(m) {
 }
 function renderSettingState() {
   $('#unsaved').textContent = dirty ? 'Unsaved changes' : 'Changes saved';
+  for (const button of document.querySelectorAll('[data-action="save"]')) button.disabled = !dirty;
   const info = $('#installation-info');
   if (info)
     info.textContent =
@@ -318,7 +349,7 @@ function renderSettingState() {
 }
 function markDirty() {
   dirty = true;
-  $('#unsaved').textContent = 'Unsaved changes';
+  renderSettingState();
 }
 function logRows() {
   const query = $('#log-search').value.toLowerCase(),
@@ -445,6 +476,7 @@ document.addEventListener('click', (event) => {
       submit();
       break;
     case 'save':
+      if (!dirty) break;
       if (document.querySelector(':invalid')) {
         feedback('Fix invalid fields before saving.', true);
         break;

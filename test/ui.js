@@ -55,10 +55,13 @@ async function main() {
     await update();
     assert.equal(await page.locator('[role=tab]').count(), 3);
     assert.ok(await page.locator('#send-message').isDisabled());
+    assert.match(await page.locator('#context-meter').getAttribute('aria-label'), /Estimated context remaining/);
     await fs.mkdir(path.join(root, '.debug/screenshots'), { recursive: true });
     await page.screenshot({ path: path.join(root, '.debug/screenshots/chat-empty.png') });
     await page.locator('#tab-settings').click();
+    assert.ok(await page.locator('[data-action=save]').first().isDisabled());
     await page.locator('[data-action=addModel]').click();
+    assert.ok(!(await page.locator('[data-action=save]').first().isDisabled()));
     assert.equal(await page.locator('[data-model]').count(), 1);
     assert.equal(
       await page.locator('[data-model-field=label]').evaluate((e) => document.activeElement === e),
