@@ -246,6 +246,55 @@ h3 {
 .message.notice .message-heading {
   display: none;
 }
+.message.notice.compaction {
+  border: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0;
+}
+.compaction-line {
+  width: 1px;
+  height: 18px;
+  background: var(--vscode-panel-border);
+}
+.compaction-center {
+  width: min(260px, 82%);
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+.compaction-progress {
+  height: 3px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--vscode-progressBar-background, var(--vscode-panel-border));
+  opacity: 0.35;
+}
+.compaction-progress > div {
+  width: 45%;
+  height: 100%;
+  background: var(--vscode-progressBar-background, var(--vscode-focusBorder));
+  animation: compaction-loading 1.15s ease-in-out infinite alternate;
+  opacity: 1;
+}
+.compaction-complete .compaction-center {
+  color: var(--vscode-foreground);
+}
+.compaction-failed .compaction-center {
+  color: var(--vscode-errorForeground);
+}
+@keyframes compaction-loading {
+  from { transform: translateX(-10%); }
+  to { transform: translateX(135%); }
+}
+body.reduced-motion .compaction-progress > div {
+  animation: none;
+  width: 100%;
+}
 .message-body p {
   margin: 8px 0;
 }

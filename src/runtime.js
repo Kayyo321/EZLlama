@@ -4,6 +4,10 @@ const { createReadStream } = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const isContextOverflow = (message) =>
+  /context\s*(?:window|size|limit|length)|maximum context|prompt[^\n]*(?:too long|too large|exceed)|too many tokens|tokens?[^\n]*(?:limit|exceed)/i.test(
+    message
+  );
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { EventEmitter } = require('node:events');
@@ -508,7 +512,12 @@ class Server extends EventEmitter {
     this.setState('stopped');
   }
 }
-async function completion(base, config, messages, { signal, onToken, apiKey, maxOutput } = {}) {
+async function completion(
+  base,
+  config,
+  messages,
+  { signal, onToken, apiKey, maxOutput, requestBody = {} } = {}
+) {
   const abort = AbortSignal.any([
     ...(signal ? [signal] : []),
     AbortSignal.timeout(config.timeoutSeconds * 1000)
@@ -522,6 +531,7 @@ async function completion(base, config, messages, { signal, onToken, apiKey, max
     signal: abort,
     body: JSON.stringify({
       ...config.extraBody,
+      ...requestBody,
       messages,
       temperature: config.temperature,
       max_tokens: maxOutput || config.maxOutput,
@@ -531,8 +541,10 @@ async function completion(base, config, messages, { signal, onToken, apiKey, max
   if (!response.ok) {
     const body = (await response.text()).slice(0, 3000);
     const error = new Error(`HTTP ${response.status}: ${body}`);
-    error.contextOverflow =
-      response.status === 400 && /context|token|too long|too large/i.test(body);
+    // llama.cpp and compatible servers do not agree on the HTTP status used for
+    // an overflowing prompt, so identify it from the response rather than only
+    // treating HTTP 400 as recoverable.
+    error.contextOverflow = isContextOverflow(body);
     error.retryable = response.status === 429 || response.status >= 500;
     throw error;
   }
@@ -541,11 +553,18 @@ async function completion(base, config, messages, { signal, onToken, apiKey, max
     const result = data.choices?.[0]?.message?.content;
     if (typeof result !== 'string') throw new Error('Server returned no assistant content.');
     onToken?.(result);
+    if (data.choices?.[0]?.finish_reason === 'length') {
+      const error = new Error('Generation reached the available token limit.');
+      error.outputLimit = true;
+      error.partialOutput = result;
+      throw error;
+    }
     return result;
   }
   let result = '',
     buffer = '',
-    done = false;
+    done = false,
+    finishReason = '';
   const decoder = new TextDecoder();
   const consume = (event) => {
     const payload = event
@@ -560,8 +579,15 @@ async function completion(base, config, messages, { signal, onToken, apiKey, max
       return;
     }
     const data = JSON.parse(payload);
-    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-    const delta = data.choices?.[0]?.delta?.content || '';
+    if (data.error) {
+      const message = data.error.message || JSON.stringify(data.error);
+      const error = new Error(message);
+      error.contextOverflow = isContextOverflow(message);
+      throw error;
+    }
+    const choice = data.choices?.[0];
+    if (choice?.finish_reason) finishReason = choice.finish_reason;
+    const delta = choice?.delta?.content || '';
     result += delta;
     if (delta) onToken?.(delta);
   };
@@ -581,6 +607,12 @@ async function completion(base, config, messages, { signal, onToken, apiKey, max
     throw new Error(
       'The streaming connection ended before completion. Partial output has been preserved.'
     );
+  if (finishReason === 'length') {
+    const error = new Error('Generation reached the available token limit.');
+    error.outputLimit = true;
+    error.partialOutput = result;
+    throw error;
+  }
   return result;
 }
 async function countTokens(base, messages, mode, signal, apiKey) {

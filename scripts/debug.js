@@ -5,7 +5,8 @@ const os = require('node:os');
 const { spawn } = require('node:child_process');
 async function main() {
   const root = path.resolve(__dirname, '..'),
-    test = process.argv.includes('--test');
+    test = process.argv.includes('--test'),
+    visible = !test && process.env.EZLLAMA_VISIBLE_DEBUG === '1';
   const candidates = [
     process.env.VSCODE_EXECUTABLE,
     ...(process.platform === 'win32'
@@ -53,6 +54,7 @@ async function main() {
   }
   const args = [
     '--new-window',
+    ...(visible ? ['--wait'] : []),
     `--extensionDevelopmentPath=${root}`,
     `--user-data-dir=${profile}`,
     `--extensions-dir=${path.join(debugRoot, 'extensions')}`,
@@ -67,20 +69,24 @@ async function main() {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(executable, args, {
-    stdio: test ? 'inherit' : 'ignore',
+    stdio: test || visible ? 'inherit' : 'ignore',
     env,
-    detached: !test,
-    windowsHide: true
+    detached: !test && !visible,
+    windowsHide: !visible
   });
-  child.on('error', (e) => {
-    console.error(e.message);
-    process.exitCode = 1;
-  });
-  if (test)
-    child.on('exit', (code) => {
-      process.exitCode = code ?? 1;
+  if (test || visible) {
+    const code = await new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', (value) => resolve(value ?? 1));
     });
-  else child.unref();
+    process.exitCode = code;
+  } else {
+    child.on('error', (e) => {
+      console.error(e.message);
+      process.exitCode = 1;
+    });
+    child.unref();
+  }
 }
 main().catch((e) => {
   console.error(e);

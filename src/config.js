@@ -49,7 +49,15 @@ const defaults = {
   extraBody: {}
 };
 function configuration(value = {}) {
-  return { ...structuredClone(defaults), ...value };
+  // VS Code may return configuration values backed by an IPC proxy. Those values
+  // look like plain objects but cannot be passed to structuredClone (which the
+  // server uses when it starts). Settings are JSON-only, so normalize them at
+  // the boundary into ordinary data objects.
+  let provided = {};
+  try {
+    provided = JSON.parse(JSON.stringify(value));
+  } catch {}
+  return { ...structuredClone(defaults), ...provided };
 }
 function parseCommand(command) {
   if (typeof command !== 'string' || !command.trim()) throw new Error('Enter a server command.');

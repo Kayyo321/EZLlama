@@ -106,6 +106,14 @@ function renderTranscript() {
     const article = document.createElement('article');
     article.className = `message ${message.role} ${message.kind || ''}`;
     article.dataset.messageId = message.id;
+    if (message.role === 'notice' && message.kind === 'compaction') {
+      article.classList.add(`compaction-${message.status || 'complete'}`);
+      article.setAttribute('role', 'status');
+      article.setAttribute('aria-live', 'polite');
+      article.innerHTML = `<div class="compaction-line" aria-hidden="true"></div><div class="compaction-center">${message.status === 'running' ? '<div class="compaction-progress"><div></div></div>' : ''}<span>${esc(message.content)}</span></div><div class="compaction-line" aria-hidden="true"></div>`;
+      root.append(article);
+      continue;
+    }
     const header = document.createElement('div');
     header.className = 'message-heading';
     header.innerHTML = `<span>${message.role === 'user' ? 'You' : message.role === 'assistant' ? 'EZLlama' : message.kind === 'compaction' ? 'Context compacted' : 'Activity'}${message.partial ? ' · partial' : ''}</span>`;
@@ -373,10 +381,18 @@ function renderLogs() {
   }
   if (follow) root.scrollTop = root.scrollHeight;
 }
+let feedbackTimer;
 function feedback(text, error = false) {
-  $('#feedback').hidden = !text;
-  $('#feedback').textContent = text;
-  $('#feedback').classList.toggle('error-text', error);
+  const element = $('#feedback');
+  clearTimeout(feedbackTimer);
+  element.hidden = !text;
+  element.textContent = text;
+  element.classList.toggle('error-text', error);
+  if (text)
+    feedbackTimer = setTimeout(() => {
+      element.hidden = true;
+      element.textContent = '';
+    }, 3000);
 }
 function postConfigPatch(values) {
   if (dirty) {

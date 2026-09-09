@@ -121,7 +121,15 @@ class Chat extends EventEmitter {
       throw new Error(
         'There is no earlier context to compact. Shorten the current message or attachment, or increase context.'
       );
-    this.note('Compacting context… Your full transcript is preserved.');
+    const activity = {
+      id: id(),
+      role: 'notice',
+      kind: 'compaction',
+      status: 'running',
+      content: 'Compacting...'
+    };
+    chat.messages.push(activity);
+    this.changed();
     this.log.add('compaction', 'info', 'Compaction started.');
     const original = this.server.modelId;
     let switched = false;
@@ -184,20 +192,32 @@ class Chat extends EventEmitter {
           throw new Error(
             'Compaction summary exceeded its context budget. Increase the compaction model context or reduce the buffer.'
           );
-        summary = await this.request(messages, { maxOutput: output });
+        // Summaries need visible answer tokens, not a hidden reasoning trace. In
+        // llama.cpp, reasoning models can otherwise spend the entire output
+        // allowance thinking and return an empty `content` field.
+        try {
+          summary = await this.request(messages, {
+            maxOutput: output,
+            requestBody: { reasoning_effort: 'none' }
+          });
+        } catch (e) {
+          // A summary that fills its output allowance is still usable. Normal
+          // chat generations handle this signal by continuing the response.
+          if (!e.outputLimit || !e.partialOutput?.trim()) throw e;
+          summary = e.partialOutput;
+        }
         if (!summary.trim()) throw new Error('Compaction returned an empty summary.');
       }
       // Commit only after every chunk succeeds. A failure keeps the old context intact.
       chat.summary = summary;
       chat.contextStart = end;
       chat.compactions.push({ at: new Date().toISOString(), summary, contextStart: end });
-      this.note('Context compacted. Earlier messages remain in this conversation.', 'compaction');
+      activity.status = 'complete';
+      activity.content = 'Chat Compacted, Context Reset';
       this.log.add('compaction', 'info', 'Compaction committed.');
     } catch (e) {
-      this.note(
-        `Compaction failed: ${this.log.redact(e.message)}. Use Compact to retry; no transcript was removed.`,
-        'error'
-      );
+      activity.status = 'failed';
+      activity.content = `Compaction failed: ${this.log.redact(e.message)}. Use Compact to retry; no transcript was removed.`;
       throw e;
     } finally {
       if (switched) {
@@ -269,11 +289,15 @@ class Chat extends EventEmitter {
             'This message and attachments still exceed context after compaction. Shorten them or increase model context.'
           );
       }
+      assistant = { id: id(), role: 'assistant', content: '', partial: true };
+      chat.messages.push(assistant);
+      this.changed();
+      let continuations = 0;
       while (true) {
+        // On the first attempt the empty assistant is omitted. After a mid-stream
+        // overflow, the prior partial text is included as an assistant prefill so
+        // the next visible assistant message continues it after compaction.
         const messages = this.context();
-        assistant = { id: id(), role: 'assistant', content: '', partial: true };
-        chat.messages.push(assistant);
-        this.changed();
         try {
           let lastSave = Date.now();
           await this.request(messages, {
@@ -289,10 +313,25 @@ class Chat extends EventEmitter {
           assistant.partial = false;
           break;
         } catch (e) {
-          if (e.contextOverflow && c.autoCompact && !compacted && !assistant.content) {
-            chat.messages.pop();
-            await this.compactInternal(true);
-            compacted = true;
+          if ((e.contextOverflow || e.outputLimit) && c.autoCompact) {
+            if (!assistant.content) chat.messages.pop();
+            // A `length` finish can mean either the configured output cap or
+            // the slot's remaining context. Continue directly while the next
+            // request still fits; compact once it no longer does.
+            if (e.contextOverflow || !(await fits())) {
+              if (compacted) throw e;
+              await this.compactInternal(true);
+              compacted = true;
+            }
+            continuations++;
+            if (continuations > 32)
+              throw new Error('Generation did not finish after 32 automatic continuations.');
+            // Keep any text already shown as a partial message, then place the
+            // continuation after the compaction event so transcript order
+            // matches what happened on screen.
+            assistant = { id: id(), role: 'assistant', content: '', partial: true };
+            chat.messages.push(assistant);
+            this.changed();
             continue;
           }
           throw e;

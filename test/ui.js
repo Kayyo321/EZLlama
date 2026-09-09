@@ -104,6 +104,21 @@ async function main() {
         (m) => m.type === 'copy' && m.text.includes('hello')
       )
     );
+    state.active.messages.push({
+      id: 'compact',
+      role: 'notice',
+      kind: 'compaction',
+      status: 'running',
+      content: 'Compacting...'
+    });
+    await update();
+    assert.equal(await page.locator('.compaction-line').count(), 2);
+    assert.equal(await page.locator('.compaction-progress').count(), 1);
+    state.active.messages.at(-1).status = 'complete';
+    state.active.messages.at(-1).content = 'Chat Compacted, Context Reset';
+    await update();
+    assert.equal(await page.locator('.compaction-progress').count(), 0);
+    assert.equal(await page.locator('.compaction-center').textContent(), 'Chat Compacted, Context Reset');
     await page.locator('#prompt').fill('Hello');
     await page.locator('#prompt').press('Shift+Enter');
     await page.locator('#prompt').type('world');

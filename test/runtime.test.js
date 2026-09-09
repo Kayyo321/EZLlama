@@ -56,6 +56,48 @@ test('broken streams are errors and preserve received tokens', async (t) => {
   );
   assert.equal(partial, 'partial');
 });
+test('length finish is surfaced after preserving streamed output', async (t) => {
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    res.end(
+      'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\n\n' +
+        'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n' +
+        'data: [DONE]\n\n'
+    );
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => server.close());
+  let partial = '';
+  await assert.rejects(
+    completion(`http://127.0.0.1:${server.address().port}`, configuration(), [], {
+      onToken: (x) => (partial += x)
+    }),
+    (error) => error.outputLimit === true && error.partialOutput === 'partial'
+  );
+  assert.equal(partial, 'partial');
+});
+test('request-specific body options override configured extras', async (t) => {
+  let body;
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    body = JSON.parse(Buffer.concat(chunks));
+    res.setHeader('Content-Type', 'application/json');
+    res.end(
+      JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: 'summary' } }] })
+    );
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => server.close());
+  const config = configuration({ streaming: false, extraBody: { reasoning_effort: 'high' } });
+  assert.equal(
+    await completion(`http://127.0.0.1:${server.address().port}`, config, [], {
+      requestBody: { reasoning_effort: 'none' }
+    }),
+    'summary'
+  );
+  assert.equal(body.reasoning_effort, 'none');
+});
 test('GGUF validation rejects HTML and verifies reference hashes', async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ezllama-test-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
