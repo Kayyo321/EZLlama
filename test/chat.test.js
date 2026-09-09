@@ -53,6 +53,21 @@ test('context folds consecutive assistant continuations into one message', () =>
   assert.equal(out.at(-1).role, 'assistant');
   assert.equal(out.at(-1).content, 'part one part two');
 });
+test('context keeps a user turn after a mid-generation compaction', async () => {
+  const chat = make();
+  chat.active.messages = [
+    { role: 'user', content: 'Write it' },
+    { role: 'assistant', content: 'part one', partial: true }
+  ];
+  chat.request = async () => 'Summary so far';
+  await chat.compactInternal(false, true);
+  const out = chat.context();
+  assert.equal(out.filter((m) => m.role === 'user').length, 1);
+  assert.equal(out[0].role, 'system');
+  assert.equal(out[1].role, 'user');
+  assert.equal(out.at(-1).role, 'assistant');
+  assert.equal(out.at(-1).content, 'part one');
+});
 test('compaction preserves visible messages and replaces only internal context', async () => {
   const chat = make();
   chat.active.messages = [

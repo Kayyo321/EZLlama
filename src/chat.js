@@ -120,6 +120,16 @@ class Chat extends EventEmitter {
           content: m.content || 'Cancelled.'
         });
     }
+    // Compacting mid-generation moves the context start past the user message, leaving
+    // only the assistant prefill. Chat templates (and llama.cpp's tool-call templates in
+    // particular) reject a conversation with no user turn, so restate the request from
+    // the summary that replaced it.
+    if (!out.some((m) => m.role === 'user'))
+      out.splice(1, 0, {
+        role: 'user',
+        content:
+          'Continue the work described in the working summary above, picking up from the partial reply that follows.'
+      });
     return out;
   }
   stop() {
