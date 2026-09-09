@@ -104,7 +104,14 @@ class Chat extends EventEmitter {
                 name: t.name,
                 content: 'Cancelled before completion.'
               });
-        } else if (m.content) out.push({ role: 'assistant', content: m.content });
+        } else if (m.content) {
+          // Continuations after an output-limit stop leave several assistant rows in a
+          // row. Servers accept at most one trailing assistant message (the prefill), so
+          // fold consecutive assistant text into it.
+          const prev = out[out.length - 1];
+          if (prev?.role === 'assistant' && !prev.tool_calls) prev.content += m.content;
+          else out.push({ role: 'assistant', content: m.content });
+        }
       } else if (m.role === 'tool')
         out.push({
           role: 'tool',
@@ -495,7 +502,13 @@ class Chat extends EventEmitter {
     this.changed();
     let assistant;
     const newAssistant = () => {
-      assistant = { id: id(), role: 'assistant', content: '', partial: true };
+      assistant = {
+        id: id(),
+        role: 'assistant',
+        content: '',
+        partial: true,
+        model: this.server.modelId
+      };
       chat.messages.push(assistant);
       this.changed();
     };

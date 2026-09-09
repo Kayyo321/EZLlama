@@ -137,6 +137,12 @@ function toolRow(message) {
   article.innerHTML = html;
   return article;
 }
+// Assistant turns are labelled with the model that produced them; older messages
+// predate the stamp, so fall back to the current selection.
+function assistantName(message) {
+  const modelId = message.model || state.selected;
+  return state.config.models.find((m) => m.id === modelId)?.label || modelId || 'Assistant';
+}
 function renderTranscript() {
   const root = $('#transcript');
   const atBottom = root.scrollTop + root.clientHeight >= root.scrollHeight - 90;
@@ -167,7 +173,7 @@ function renderTranscript() {
     }
     const header = document.createElement('div');
     header.className = 'message-heading';
-    header.innerHTML = `<span>${message.role === 'user' ? 'You' : message.role === 'assistant' ? 'EZLlama' : message.kind === 'compaction' ? 'Context compacted' : 'Activity'}${message.partial ? ' · partial' : ''}</span>`;
+    header.innerHTML = `<span>${message.role === 'user' ? 'You' : message.role === 'assistant' ? esc(assistantName(message)) : message.kind === 'compaction' ? 'Context compacted' : 'Activity'}${message.partial ? ' · partial' : ''}</span>`;
     if (message.role !== 'notice') {
       const copy = document.createElement('button');
       copy.className = 'icon';

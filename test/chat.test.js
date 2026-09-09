@@ -40,6 +40,19 @@ function answerPrompts(chat, answer) {
     if (value !== undefined) queueMicrotask(() => chat.reply(row.prompt.id, value));
   });
 }
+test('context folds consecutive assistant continuations into one message', () => {
+  const chat = make();
+  chat.active.messages = [
+    { role: 'user', content: 'Write it' },
+    { role: 'assistant', content: 'part one ' },
+    { role: 'assistant', content: 'part two' },
+    { role: 'assistant', content: '', partial: true }
+  ];
+  const out = chat.context();
+  assert.equal(out.filter((m) => m.role === 'assistant').length, 1);
+  assert.equal(out.at(-1).role, 'assistant');
+  assert.equal(out.at(-1).content, 'part one part two');
+});
 test('compaction preserves visible messages and replaces only internal context', async () => {
   const chat = make();
   chat.active.messages = [
