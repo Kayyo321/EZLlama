@@ -187,6 +187,7 @@ class Chat extends EventEmitter {
       role: 'notice',
       kind: 'compaction',
       status: 'running',
+      progress: 0,
       content: 'Compacting...'
     };
     chat.messages.push(activity);
@@ -232,6 +233,10 @@ class Chat extends EventEmitter {
           let summary = chat.summary || '';
           for (let i = 0; i < chunks.length; i++) {
             this.emit('progress', `Compacting ${i + 1}/${chunks.length}…`);
+            // Show the work already banked so the bar advances as chunks land.
+            activity.progress = i / chunks.length;
+            activity.content = `Compacting ${i + 1}/${chunks.length}…`;
+            this.changed();
             const messages = [
               {
                 role: 'system',
@@ -273,6 +278,8 @@ class Chat extends EventEmitter {
               summary = e.partialOutput;
             }
             if (!summary.trim()) throw new Error('Compaction returned an empty summary.');
+            activity.progress = (i + 1) / chunks.length;
+            this.changed();
           }
           // Commit only after every chunk succeeds. A failure keeps the old context intact.
           chat.summary = summary;
@@ -281,6 +288,7 @@ class Chat extends EventEmitter {
         }
       );
       activity.status = 'complete';
+      activity.progress = 1;
       activity.content = 'Chat Compacted, Context Reset';
       this.log.add('compaction', 'info', 'Compaction committed.');
     } catch (e) {

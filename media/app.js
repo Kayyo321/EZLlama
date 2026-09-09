@@ -8,6 +8,9 @@ const esc = (value) =>
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
   );
+// A started compaction always shows a sliver of fill so the bar reads as live.
+const compactionPercent = (progress) =>
+  Math.round(Math.max(0.06, Math.min(1, Math.max(0, progress || 0))) * 100);
 const icons = {
   chat: '<path d="M4 4h16v12H9l-5 4z"/>',
   console: '<path d="m5 6 5 6-5 6m8 0h6"/>',
@@ -158,7 +161,7 @@ function renderTranscript() {
       article.classList.add(`compaction-${message.status || 'complete'}`);
       article.setAttribute('role', 'status');
       article.setAttribute('aria-live', 'polite');
-      article.innerHTML = `<div class="compaction-line" aria-hidden="true"></div><div class="compaction-center">${message.status === 'running' ? '<div class="compaction-progress"><div></div></div>' : ''}<span>${esc(message.content)}</span></div><div class="compaction-line" aria-hidden="true"></div>`;
+      article.innerHTML = `<div class="compaction-line" aria-hidden="true"></div><div class="compaction-center">${message.status === 'running' ? `<div class="compaction-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(compactionPercent(message.progress))}"><div style="width:${Math.round(compactionPercent(message.progress))}%"></div></div>` : ''}<span>${esc(message.content)}</span></div><div class="compaction-line" aria-hidden="true"></div>`;
       root.append(article);
       continue;
     }
