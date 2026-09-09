@@ -51,7 +51,7 @@ app.innerHTML = `<div class="top"><nav class="tabs" role="tablist" aria-label="E
  </div><div class="input-box"><textarea id="prompt" rows="3" placeholder="Ask about your code…" aria-label="Message"></textarea>${button('send', 'Send message (Enter)', 'send', 'id="send-message"')}</div><div id="send-reason" class="muted"></div></div>
 </section>
 <section id="panel-console" role="tabpanel" aria-labelledby="tab-console" hidden><div class="console-controls"><input id="log-search" placeholder="Search logs" aria-label="Search logs"><select id="log-level" aria-label="Log level"><option value="">All levels</option>${['debug', 'info', 'warning', 'error'].map((x) => `<option>${x}</option>`).join('')}</select><select id="log-source" aria-label="Log source"><option value="">All sources</option>${['extension', 'server', 'request', 'download', 'compaction', 'agent'].map((x) => `<option>${x}</option>`).join('')}</select></div><div class="actions"><button data-action="copyLogs">Copy</button><button data-action="clearLogs">Clear visible</button><button data-action="exportLogs">Export</button><label><input id="follow" type="checkbox" checked>Follow</label></div><pre id="logs" tabindex="0" aria-label="Server and extension logs"></pre></section>
-<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden><div class="settings-heading"><h2>Settings</h2><span id="unsaved" class="muted"></span><button data-action="discard">Discard</button><button class="primary" data-action="save">Save changes</button></div><div class="settings-body"><div id="settings-scroll"><div id="settings-content"></div></div><nav id="settings-nav" aria-label="Settings sections"></nav></div></section>`;
+<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden><div class="settings-heading"><h2>Settings</h2><span id="unsaved" class="muted"></span><button data-action="discard">Discard</button><button class="primary" data-action="save">Save changes</button></div><div class="settings-body"><div id="settings-scroll"><div id="settings-content"></div><div id="settings-spacer" aria-hidden="true"></div></div><nav id="settings-nav" aria-label="Settings sections"></nav></div></section>`;
 function changeTab(value) {
   tab = value;
   for (const name of ['chat', 'console', 'settings']) {
@@ -311,7 +311,32 @@ function renderContextMeter() {
   meter.title = label;
   meter.setAttribute('aria-label', label);
   meter.querySelector('span').textContent = text;
+  fitToolbar();
 }
+// Composer controls in the order they are dropped as the panel narrows, least important first.
+// New chat also lives in the history row, and Auto compact and the meter reading are both in Settings.
+const TOOLBAR_COLLAPSE_ORDER = [
+  '[data-action="newChat"]',
+  'label.auto',
+  '#context-meter span',
+  '[data-action="selection"]',
+  '[data-action="attach"]',
+  '[data-action="compact"]'
+];
+let collapsibleToolbar = null;
+// Hides toolbar controls until the row fits, so a narrow panel never overlaps them.
+function fitToolbar() {
+  const toolbar = $('#composer .toolbar');
+  if (!collapsibleToolbar)
+    collapsibleToolbar = TOOLBAR_COLLAPSE_ORDER.map((s) => toolbar.querySelector(s)).filter(Boolean);
+  if (!toolbar.clientWidth) return;
+  for (const item of collapsibleToolbar) item.classList.remove('collapsed');
+  for (const item of collapsibleToolbar) {
+    if (toolbar.scrollWidth <= toolbar.clientWidth + 1) return;
+    item.classList.add('collapsed');
+  }
+}
+new ResizeObserver(fitToolbar).observe($('#composer'));
 function opts(values, current) {
   return values
     .map((value) => {
@@ -430,10 +455,23 @@ function renderSettings() {
   )}<details><summary>History, workspace and accessibility</summary>${field('saveChats', 'Save local chat history', 'checkbox')}${field('retention', 'Conversations retained on disk', 'number')}<div class="actions"><button data-action="exportChat">Export current chat</button><button data-action="deleteChats">Delete all conversations…</button></div>${field('allowWorkspace', 'Allow explicitly attached workspace context', 'checkbox')}${field('maxFileKB', 'Maximum attached file size (KB)', 'number')}${field('logging', 'Keep diagnostic logs in memory', 'checkbox')}${field('verbosity', 'Diagnostic verbosity', ['debug', 'info', 'warning', 'error'])}${field('sensitiveArguments', 'Sensitive command arguments', 'json')}${field('redactionPatterns', 'Literal strings to redact', 'json')}${field('fontSize', 'Chat font size (10–24)', 'number')}${field('reducedMotion', 'Reduce motion', 'checkbox')}<p class="muted">No telemetry. Chat requests go to your managed loopback server. File context is only read when explicitly attached. Downloads contact GitHub or your chosen model source.</p></details></section>`;
   renderSettingsNav();
   renderSettingState();
+  sizeSettingsSpacer();
 }
 function settingsSections() {
   return [...document.querySelectorAll('#settings-content .settings-group[id]')];
 }
+// Keeps enough room below the last section that every section can scroll to the top of the
+// scroller. Without it the trailing sections share one scroll position and jumping to one lands
+// on another.
+function sizeSettingsSpacer() {
+  const scroller = $('#settings-scroll');
+  const last = settingsSections().at(-1);
+  if (!last || !scroller.clientHeight) return;
+  $('#settings-spacer').style.height = `${Math.max(0, scroller.clientHeight - last.offsetHeight - 12)}px`;
+  updateSettingsNav();
+}
+new ResizeObserver(sizeSettingsSpacer).observe($('#settings-scroll'));
+new ResizeObserver(sizeSettingsSpacer).observe($('#settings-content'));
 function renderSettingsNav() {
   $('#settings-nav').innerHTML = settingsSections()
     .map(
@@ -449,9 +487,7 @@ function updateSettingsNav() {
   const sections = settingsSections();
   if (!sections.length) return;
   let current = sections[0];
-  if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2)
-    current = sections.at(-1);
-  else for (const section of sections) if (section.offsetTop - scroller.scrollTop <= 48) current = section;
+  for (const section of sections) if (section.offsetTop - scroller.scrollTop <= 48) current = section;
   for (const link of $('#settings-nav').querySelectorAll('[data-jump]')) {
     const active = link.dataset.jump === current.id;
     link.classList.toggle('current', active);

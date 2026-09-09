@@ -368,7 +368,17 @@ body.reduced-motion .compaction-progress > div {
   gap: 3px;
   margin: 3px 0 7px;
 }
+.toolbar > * {
+  flex-shrink: 0;
+}
+.toolbar .collapsed {
+  display: none;
+}
 .mode {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 10px;
   color: var(--vscode-descriptionForeground);
   margin-right: auto;
@@ -631,7 +641,7 @@ body.reduced-motion .compaction-progress > div {
   border-left: 1px solid var(--vscode-panel-border);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
 }
 #settings-nav button {
   background: transparent;
@@ -641,7 +651,7 @@ body.reduced-motion .compaction-progress > div {
   font-size: 11px;
   line-height: 1.3;
   text-align: left;
-  padding: 4px 6px;
+  padding: 6px;
   min-height: 0;
   overflow-wrap: anywhere;
 }
@@ -807,9 +817,6 @@ details[open] > summary {
   }
   .mode {
     padding: 1px 5px;
-  }
-  .toolbar > [data-action='newChat'] {
-    display: none;
   }
   #settings-nav {
     width: 84px;
